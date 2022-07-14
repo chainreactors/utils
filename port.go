@@ -13,7 +13,7 @@ var (
 
 type PortMapper map[string][]string
 
-func PortsHandler(portstring string) []string {
+func ParsePort(portstring string) []string {
 	portstring = strings.TrimSpace(portstring)
 	portstring = strings.Replace(portstring, "\r", "", -1)
 	return portSliceHandler(strings.Split(portstring, ","))
@@ -22,16 +22,16 @@ func PortsHandler(portstring string) []string {
 func portSliceHandler(ports []string) []string {
 	var portSlice []string
 	for _, portname := range ports {
-		portSlice = append(portSlice, choiceports(portname)...)
+		portSlice = append(portSlice, choicePorts(portname)...)
 	}
-	portSlice = parsePortsPreset(portSlice)
-	portSlice = SliceUnique(portSlice)
+	portSlice = expandPorts(portSlice)
+	portSlice = sliceUnique(portSlice)
 	return portSlice
 }
 
-func parsePortsPreset(ports []string) []string {
+func expandPorts(ports []string) []string {
+	// 将string格式的port range 转为单个port组成的slice
 	var tmpports []string
-	//生成端口列表 支持,和-
 	for _, pr := range ports {
 		if len(pr) == 0 {
 			continue
@@ -43,12 +43,12 @@ func parsePortsPreset(ports []string) []string {
 		if pr[len(pr)-1] == 45 {
 			pr = pr + "65535"
 		}
-		tmpports = append(tmpports, port2PortSlice(pr)...)
+		tmpports = append(tmpports, expandPort(pr)...)
 	}
 	return tmpports
 }
 
-func port2PortSlice(port string) []string {
+func expandPort(port string) []string {
 	var tmpports []string
 	if strings.Contains(port, "-") {
 		sf := strings.Split(port, "-")
@@ -64,7 +64,7 @@ func port2PortSlice(port string) []string {
 }
 
 // 端口预设
-func choiceports(portname string) []string {
+func choicePorts(portname string) []string {
 	var ports []string
 	if portname == "all" {
 		for p := range PortMap {

@@ -2,7 +2,7 @@ package icps
 
 import "strconv"
 
-func SliceUnique(ss []string) []string {
+func sliceUnique(ss []string) []string {
 	res := make([]string, 0, len(ss))
 	temp := map[string]struct{}{}
 	for _, item := range ss {
@@ -14,7 +14,7 @@ func SliceUnique(ss []string) []string {
 	return res
 }
 
-func ToInt(s string) int {
+func toInt(s string) int {
 	i, err := strconv.Atoi(s)
 	if err != nil {
 		return 0
