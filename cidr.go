@@ -124,6 +124,14 @@ func (cs CIDRs) Len() int {
 	return len(cs)
 }
 
+func (cs CIDRs) Strings() []string {
+	s := make([]string, len(cs))
+	for i, cidr := range cs {
+		s[i] = cidr.String()
+	}
+	return s
+}
+
 func (cs CIDRs) Coalesce() CIDRs {
 	sort.Sort(cs)
 	var newCIDRs CIDRs

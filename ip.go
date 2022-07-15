@@ -93,6 +93,14 @@ func (is IPs) Len() int {
 	return len(is)
 }
 
+func (is IPs) Strings() []string {
+	s := make([]string, len(is))
+	for i, cidr := range is {
+		s[i] = cidr.String()
+	}
+	return s
+}
+
 func (is IPs) Approx() CIDRs {
 	cidrMap := make(map[string]*CIDR)
 
