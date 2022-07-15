@@ -1,4 +1,4 @@
-package icps
+package ipcs
 
 import (
 	"fmt"
