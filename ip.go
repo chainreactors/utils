@@ -102,10 +102,10 @@ func (is IPs) Approx() CIDRs {
 			var baseNet byte
 			var nowN, newN byte
 			for i := 8; i > 0; i-- {
-				nowN = n.IP.IP[3] & (1 << (i - 1)) >> (i - 1)
-				newN = ip.IP[3] & (1 << (i - 1)) >> (i - 1)
+				nowN = n.IP.IP[3] & (1 << uint(i - 1)) >> uint(i - 1)
+				newN = ip.IP[3] & (1 << uint(i - 1)) >> uint(i - 1)
 				if nowN&newN == 1 {
-					baseNet += 1 << (i - 1)
+					baseNet += 1 << uint(i - 1)
 				}
 				if nowN^newN == 1 {
 					n.Mask = 32 - i

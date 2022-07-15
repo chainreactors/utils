@@ -75,7 +75,7 @@ func (c CIDR) IPMask() net.IPMask {
 }
 
 func (c CIDR) Count() uint {
-	return 1 << (32 - c.Mask)
+	return 1 << uint(32 - c.Mask)
 }
 
 func (c CIDR) Range() (first, final uint) {
