@@ -73,7 +73,7 @@ func (ip IP) Mask(mask int) IP {
 	return IP{IP: ip.IP.Mask(net.CIDRMask(mask, 32))}
 }
 
-type IPs []IP
+type IPs []*IP
 
 func (is IPs) Less(i, j int) bool {
 	ipi := is[i].Int()
@@ -102,10 +102,10 @@ func (is IPs) Approx() CIDRs {
 			var baseNet byte
 			var nowN, newN byte
 			for i := 8; i > 0; i-- {
-				nowN = n.IP.IP[3] & (1 << uint(i - 1)) >> uint(i - 1)
-				newN = ip.IP[3] & (1 << uint(i - 1)) >> uint(i - 1)
+				nowN = n.IP.IP[3] & (1 << uint(i-1)) >> uint(i-1)
+				newN = ip.IP[3] & (1 << uint(i-1)) >> uint(i-1)
 				if nowN&newN == 1 {
-					baseNet += 1 << uint(i - 1)
+					baseNet += 1 << uint(i-1)
 				}
 				if nowN^newN == 1 {
 					n.Mask = 32 - i
@@ -121,7 +121,7 @@ func (is IPs) Approx() CIDRs {
 	approxed := make(CIDRs, len(cidrMap))
 	var index int
 	for _, cidr := range cidrMap {
-		approxed[index] = *cidr
+		approxed[index] = cidr
 		index++
 	}
 

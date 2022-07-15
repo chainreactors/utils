@@ -19,7 +19,7 @@ func SplitCIDR(cidr string) (string, int) {
 
 func NewCIDR(ip string, mask int) *CIDR {
 	i, _ := ParseIP(ip)
-	return &CIDR{*i, mask}
+	return &CIDR{i, mask}
 }
 
 func ParseCIDR(target string) (*CIDR, error) {
@@ -35,14 +35,14 @@ func ParseCIDR(target string) (*CIDR, error) {
 	}
 
 	if parsedIp, err := ParseIP(ip); err == nil {
-		return &CIDR{*parsedIp, mask}, nil
+		return &CIDR{parsedIp, mask}, nil
 	} else {
 		return nil, err
 	}
 }
 
 type CIDR struct {
-	IP   IP
+	IP   *IP
 	Mask int
 }
 
@@ -75,7 +75,7 @@ func (c CIDR) IPMask() net.IPMask {
 }
 
 func (c CIDR) Count() uint {
-	return 1 << uint(32 - c.Mask)
+	return 1 << uint(32-c.Mask)
 }
 
 func (c CIDR) Range() (first, final uint) {
@@ -90,15 +90,15 @@ func (c CIDR) RangeIP() (first, final uint) {
 	return first, final
 }
 
-func (c CIDR) ContainsCIDR(cidr CIDR) bool {
+func (c CIDR) ContainsCIDR(cidr *CIDR) bool {
 	return c.Net().Contains(cidr.IP.IP)
 }
 
-func (c CIDR) ContainsIP(ip IP) bool {
+func (c CIDR) ContainsIP(ip *IP) bool {
 	return c.Net().Contains(ip.IP)
 }
 
-type CIDRs []CIDR
+type CIDRs []*CIDR
 
 func (cs CIDRs) Less(i, j int) bool {
 	ipi := cs[i].FirstIP().Int()
@@ -136,7 +136,7 @@ func (cs CIDRs) Coalesce() CIDRs {
 				j++
 			}
 		}
-		cs[i].IP = *cs[i].FirstIP()
+		cs[i].IP = cs[i].FirstIP()
 		newCIDRs = append(newCIDRs, cs[i])
 		i = j
 	}
