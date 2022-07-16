@@ -151,6 +151,14 @@ func (cs CIDRs) Coalesce() CIDRs {
 	return newCIDRs
 }
 
+func (cs CIDRs) Count() uint {
+	var sum uint
+	for _, c := range cs {
+		sum += c.Count()
+	}
+	return sum
+}
+
 func MaskToIPInt(mask int) uint {
 	return uint(((uint64(4294967296) >> uint(32-mask)) - 1) << uint(32-mask))
 }
