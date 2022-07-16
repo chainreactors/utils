@@ -6,9 +6,9 @@ import (
 )
 
 var (
-	NameMap *PortMapper
-	PortMap *PortMapper
-	TagMap  *PortMapper
+	NameMap *PortMapper = &PortMapper{}
+	PortMap *PortMapper = &PortMapper{}
+	TagMap  *PortMapper = &PortMapper{}
 )
 
 type PortMapper map[string][]string
