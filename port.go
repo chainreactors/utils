@@ -16,10 +16,10 @@ type PortMapper map[string][]string
 func ParsePort(portstring string) []string {
 	portstring = strings.TrimSpace(portstring)
 	portstring = strings.Replace(portstring, "\r", "", -1)
-	return portSliceHandler(strings.Split(portstring, ","))
+	return ParsePorts(strings.Split(portstring, ","))
 }
 
-func portSliceHandler(ports []string) []string {
+func ParsePorts(ports []string) []string {
 	var portSlice []string
 	for _, portname := range ports {
 		portSlice = append(portSlice, choicePorts(portname)...)
