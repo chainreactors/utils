@@ -21,6 +21,10 @@ func (p *PortMapper) Set(name string, ports []string) {
 	(*p)[name] = ports
 }
 
+func (p *PortMapper) Append(name string, ports ...string) {
+	(*p)[name] = append((*p)[name], ports...)
+}
+
 func ParsePort(portstring string) []string {
 	portstring = strings.TrimSpace(portstring)
 	portstring = strings.Replace(portstring, "\r", "", -1)
