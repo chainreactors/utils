@@ -29,6 +29,10 @@ func NewIPWithInt(ipint uint) *IP {
 	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}.To4()}
 }
 
+func NewIPWithString(ipstr string) *IP {
+	return &IP{IP: net.ParseIP(ipstr).To4()}
+}
+
 func ParseIP(target string) (*IP, error) {
 	target = strings.TrimSpace(target)
 	if IsIpv4(target) {

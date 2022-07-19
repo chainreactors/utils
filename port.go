@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+func NewPorts(s string) Ports {
+	return ParsePort(s)
+}
+
+type Ports []string
+
+func (ps Ports) String() string {
+	return strings.Join(ps, ",")
+}
+
 var (
 	NameMap *PortMapper = &PortMapper{}
 	PortMap *PortMapper = &PortMapper{}
