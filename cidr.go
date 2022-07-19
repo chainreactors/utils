@@ -79,15 +79,15 @@ func (c CIDR) Count() int {
 }
 
 func (c CIDR) Range() (first, final uint) {
-	first = c.IP.Int()
+	first = c.FirstIP().Int()
 	final = first | uint(math.Pow(2, float64(32-c.Mask))-1)
 	return first, final
 }
 
-func (c CIDR) RangeIP() (first, final uint) {
-	first = c.IP.Int()
-	final = first | uint(math.Pow(2, float64(32-c.Mask))-1)
-	return first, final
+func (c CIDR) RangeIP() (firstip, finalip *IP) {
+	firstip = c.IP
+	finalip = NewIPWithInt(firstip.Int() | uint(math.Pow(2, float64(32-c.Mask))-1))
+	return firstip, finalip
 }
 
 func (c CIDR) ContainsCIDR(cidr *CIDR) bool {
