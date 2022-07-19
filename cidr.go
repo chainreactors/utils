@@ -74,8 +74,8 @@ func (c CIDR) IPMask() net.IPMask {
 	return net.CIDRMask(c.Mask, 32)
 }
 
-func (c CIDR) Count() uint {
-	return 1 << uint(32-c.Mask)
+func (c CIDR) Count() int {
+	return int(1 << uint(32-c.Mask))
 }
 
 func (c CIDR) Range() (first, final uint) {
@@ -151,8 +151,8 @@ func (cs CIDRs) Coalesce() CIDRs {
 	return newCIDRs
 }
 
-func (cs CIDRs) Count() uint {
-	var sum uint
+func (cs CIDRs) Count() int {
+	var sum int
 	for _, c := range cs {
 		sum += c.Count()
 	}
