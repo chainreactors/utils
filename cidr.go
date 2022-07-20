@@ -85,7 +85,7 @@ func (c CIDR) Range() (first, final uint) {
 }
 
 func (c CIDR) RangeIP() (firstip, finalip *IP) {
-	firstip = c.IP
+	firstip = c.FirstIP()
 	finalip = NewIPWithInt(firstip.Int() | uint(math.Pow(2, float64(32-c.Mask))-1))
 	return firstip, finalip
 }

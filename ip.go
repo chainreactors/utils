@@ -77,6 +77,14 @@ func (ip IP) Mask(mask int) IP {
 	return IP{IP: ip.IP.Mask(net.CIDRMask(mask, 32))}
 }
 
+func NewIPs(input []string) IPs {
+	ips := make(IPs, len(input))
+	for i, ip := range input {
+		ips[i] = NewIPWithString(ip)
+	}
+	return ips
+}
+
 type IPs []*IP
 
 func (is IPs) Less(i, j int) bool {

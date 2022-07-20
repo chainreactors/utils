@@ -2,6 +2,10 @@ package ipcs
 
 import "fmt"
 
+func NewAddr(ip, port string) *Addr {
+	return &Addr{NewIPWithString(ip), port}
+}
+
 type Addr struct {
 	IP   *IP
 	Port string
@@ -9,6 +13,10 @@ type Addr struct {
 
 func (a Addr) String() string {
 	return fmt.Sprintf("%s:%s", a.IP.String(), a.Port)
+}
+
+func NewAddrs(ips []string, ports string) *Addrs {
+	return &Addrs{NewIPs(ips), NewPorts(ports)}
 }
 
 type Addrs struct {
