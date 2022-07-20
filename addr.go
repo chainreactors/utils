@@ -41,6 +41,7 @@ func (as Addrs) GenerateWithIP() chan *Addr {
 				gen <- &Addr{ip, port}
 			}
 		}
+		close(gen)
 	}()
 	return gen
 }
@@ -53,6 +54,7 @@ func (as Addrs) GenerateWithPort() chan *Addr {
 				gen <- &Addr{ip, port}
 			}
 		}
+		close(gen)
 	}()
 	return gen
 }
