@@ -25,12 +25,14 @@ func Int2Ip(ipint uint) string {
 	return ip.String()
 }
 
-func NewIPWithInt(ipint uint) *IP {
-	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}.To4()}
-}
-
-func NewIPWithString(ipstr string) *IP {
-	return &IP{IP: net.ParseIP(ipstr).To4()}
+func NewIP(ip interface{}) *IP {
+	switch ip.(type) {
+	case uint, int:
+		ipint := uint(ip.(uint))
+		return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}.To4()}
+	default:
+		return &IP{IP: net.ParseIP(ip.(string)).To4()}
+	}
 }
 
 func ParseIP(target string) (*IP, error) {
@@ -80,7 +82,7 @@ func (ip IP) Mask(mask int) IP {
 func NewIPs(input []string) IPs {
 	ips := make(IPs, len(input))
 	for i, ip := range input {
-		ips[i] = NewIPWithString(ip)
+		ips[i] = NewIP(ip)
 	}
 	return ips
 }

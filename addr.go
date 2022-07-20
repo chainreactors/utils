@@ -3,7 +3,7 @@ package ipcs
 import "fmt"
 
 func NewAddr(ip, port string) *Addr {
-	return &Addr{NewIPWithString(ip), port}
+	return &Addr{NewIP(ip), port}
 }
 
 type Addr struct {
@@ -15,8 +15,13 @@ func (a Addr) String() string {
 	return fmt.Sprintf("%s:%s", a.IP.String(), a.Port)
 }
 
-func NewAddrs(ips []string, ports string) *Addrs {
-	return &Addrs{NewIPs(ips), NewPorts(ports)}
+func NewAddrs(ips []string, ports interface{}) *Addrs {
+	switch ports.(type) {
+	case string:
+		return &Addrs{NewIPs(ips), NewPorts(ports.(string))}
+	default:
+		return &Addrs{NewIPs(ips), ports.([]string)}
+	}
 }
 
 type Addrs struct {

@@ -55,11 +55,11 @@ func (c CIDR) IPString() string {
 }
 
 func (c CIDR) FirstIP() *IP {
-	return NewIPWithInt(c.IP.Int() & MaskToIPInt(c.Mask))
+	return NewIP(c.IP.Int() & MaskToIPInt(c.Mask))
 }
 
 func (c CIDR) LastIP() *IP {
-	return NewIPWithInt(c.IP.Int() | ^MaskToIPInt(c.Mask))
+	return NewIP(c.IP.Int() | ^MaskToIPInt(c.Mask))
 }
 
 func (c CIDR) Net() *net.IPNet {
@@ -86,7 +86,7 @@ func (c CIDR) Range() (first, final uint) {
 
 func (c CIDR) RangeIP() (firstip, finalip *IP) {
 	firstip = c.FirstIP()
-	finalip = NewIPWithInt(firstip.Int() | uint(math.Pow(2, float64(32-c.Mask))-1))
+	finalip = NewIP(firstip.Int() | uint(math.Pow(2, float64(32-c.Mask))-1))
 	return firstip, finalip
 }
 
