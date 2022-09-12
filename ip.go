@@ -35,6 +35,7 @@ func NewIP(ip interface{}) *IP {
 	}
 }
 
+// ParseIP parse host to ip and validate ip format
 func ParseIP(target string) (*IP, error) {
 	target = strings.TrimSpace(target)
 	if IsIpv4(target) {
@@ -79,10 +80,15 @@ func (ip IP) Mask(mask int) IP {
 	return IP{IP: ip.IP.Mask(net.CIDRMask(mask, 32))}
 }
 
+// NewIPs parse string to ip , auto skip wrong ip
 func NewIPs(input []string) IPs {
 	ips := make(IPs, len(input))
-	for i, ip := range input {
-		ips[i] = NewIP(ip)
+	for _, ip := range input {
+		i, err := ParseIP(ip)
+		if err != nil {
+			continue
+		}
+		ips = append(ips, i)
 	}
 	return ips
 }
