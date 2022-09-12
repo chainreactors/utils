@@ -31,7 +31,12 @@ func NewIP(ip interface{}) *IP {
 		ipint := uint(ip.(uint))
 		return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}.To4()}
 	default:
-		return &IP{IP: net.ParseIP(ip.(string)).To4()}
+		if i := net.ParseIP(ip.(string)); i != nil {
+			return &IP{IP: i.To4()}
+		} else {
+			return nil
+		}
+
 	}
 }
 
