@@ -1,8 +1,7 @@
 package ipcs
 
 import (
-	"fmt"
-	"strings"
+	"net"
 )
 
 func NewAddrWithPort(ip, port string) *Addr {
@@ -10,8 +9,8 @@ func NewAddrWithPort(ip, port string) *Addr {
 }
 
 func NewAddr(s string) *Addr {
-	if pair := strings.Split(s, ":"); len(pair) == 2 {
-		return &Addr{NewIP(pair[0]), pair[1]}
+	if ip, port, err := net.SplitHostPort(s); err != nil {
+		return &Addr{NewIP(ip), port}
 	}
 	return nil
 }
@@ -21,8 +20,12 @@ type Addr struct {
 	Port string
 }
 
+func (a Addr) String() string {
+	return net.JoinHostPort(a.IP.String(), a.Port)
+}
+
 func NewAddrs(ss []string) Addrs {
-	addrs := make(Addrs, len(ss))
+	var addrs Addrs
 	for _, s := range ss {
 		if addr := NewAddr(s); addr != nil {
 			addrs = append(addrs, addr)
@@ -32,7 +35,7 @@ func NewAddrs(ss []string) Addrs {
 }
 
 func NewAddrsWithDefaultPort(ss []string, port string) Addrs {
-	addrs := make(Addrs, len(ss))
+	var addrs Addrs
 	for _, s := range ss {
 		if addr := NewAddr(s); addr != nil {
 			addrs = append(addrs, addr)
@@ -47,10 +50,6 @@ type Addrs []*Addr
 
 func (as Addrs) Set() {
 
-}
-
-func (a Addr) String() string {
-	return fmt.Sprintf("%s:%s", a.IP.String(), a.Port)
 }
 
 func NewAddrsWithPorts(ips []string, ports interface{}) *AddrsGenerator {
