@@ -9,7 +9,7 @@ func NewAddrWithPort(ip, port string) *Addr {
 }
 
 func NewAddr(s string) *Addr {
-	if ip, port, err := net.SplitHostPort(s); err != nil {
+	if ip, port, err := net.SplitHostPort(s); err == nil {
 		return &Addr{NewIP(ip), port}
 	}
 	return nil
