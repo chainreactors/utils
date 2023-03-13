@@ -7,44 +7,83 @@ import (
 	"strings"
 )
 
-func IsIpv4(ip string) bool {
-	net.ParseIP(ip).To4()
-	if net.ParseIP(ip).To4() != nil {
+func IsIp(ip string) bool {
+	if net.ParseIP(ip) != nil {
 		return true
 	}
 	return false
 }
 
-func Ip2Int(ip string) uint {
-	s2ip := net.ParseIP(ip).To4()
-	return uint(binary.BigEndian.Uint32(s2ip))
-}
-
-func Int2Ip(ipint uint) string {
-	ip := net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}
-	return ip.String()
-}
-
-func NewIP(ip interface{}) *IP {
-	switch ip.(type) {
-	case uint, int:
-		ipint := uint(ip.(uint))
-		return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}.To4()}
-	default:
-		if i := net.ParseIP(ip.(string)); i != nil {
-			return &IP{IP: i.To4()}
-		} else {
-			return nil
-		}
-
+func MaskToIPv4(mask int) net.IP {
+	subnetMask := make([]byte, net.IPv4len) // 创建长度为4的字节数组
+	for i := 0; i < mask; i++ {
+		subnetMask[i/8] |= 1 << uint(7-i%8) // 根据子网掩码长度设置相应位为1
 	}
+	return subnetMask
 }
 
-// ParseIP parse host to ip and validate ip format
-func ParseIP(target string) (*IP, error) {
+func MaskToIPv6(mask int) net.IP {
+	subnetMask := make([]byte, net.IPv6len) // 创建长度为4的字节数组
+	for i := 0; i < mask; i++ {
+		subnetMask[i/8] |= 1 << uint(7-i%8) // 根据子网掩码长度设置相应位为1
+	}
+	return subnetMask
+}
+
+func MaskToIP(mask, ver int) net.IP {
+	if ver == 4 {
+		return MaskToIPv4(mask)
+	} else if ver == 6 {
+		return MaskToIPv6(mask)
+	}
+	return nil
+}
+
+//func Ip2Int(ip string) uint {
+//	s2ip := net.ParseIP(ip).To4()
+//	return uint(binary.BigEndian.Uint32(s2ip))
+//}
+//
+//func Int2Ip(ipint uint) string {
+//	ip := net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}
+//	return ip.String()
+//}
+
+func DistinguishIPVersion(ip net.IP) int {
+	switch len(ip) {
+	case net.IPv4len:
+		return 4
+	case net.IPv6len:
+		return 6
+	}
+	return 0
+}
+
+func ParseIP(s string) *IP {
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return nil
+	}
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '.':
+			return &IP{IP: ip, ver: 4}
+		case ':':
+			return &IP{IP: ip, ver: 6}
+		}
+	}
+	return nil
+}
+
+func NewIP(ipint uint) *IP {
+	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}, ver: 4}
+}
+
+// ParseHostToIP parse host to ip and validate ip format
+func ParseHostToIP(target string) (*IP, error) {
 	target = strings.TrimSpace(target)
-	if IsIpv4(target) {
-		return &IP{IP: net.ParseIP(target).To4()}, nil
+	if ip := ParseIP(target); ip != nil {
+		return ip, nil
 	}
 
 	iprecords, err := net.LookupIP(target)
@@ -53,9 +92,9 @@ func ParseIP(target string) (*IP, error) {
 	}
 
 	for _, ip := range iprecords {
-		if ip.To4() != nil {
+		if ip != nil {
 			//Log.Important("parse domain SUCCESS, map " + target + " to " + ip.String())
-			return &IP{ip.To4(), target}, nil
+			return &IP{ip, DistinguishIPVersion(ip), target}, nil
 		}
 	}
 	return nil, fmt.Errorf("not found Ip address")
@@ -63,33 +102,34 @@ func ParseIP(target string) (*IP, error) {
 
 type IP struct {
 	IP   net.IP
+	ver  int
 	Host string
 }
 
-//func (ip IP) IsIPv4() bool {
-//	if ip.IP.To4() != nil {
-//		return true
-//	}
-//	return false
-//}
+func (ip IP) Len() int {
+	return len(ip.IP)
+}
 
 func (ip IP) Int() uint {
-	return uint(binary.BigEndian.Uint32(ip.IP.To4()))
+	if ip.ver == 4 {
+		return uint(binary.BigEndian.Uint32(ip.IP.To4()))
+	}
+	return 0
 }
 
 func (ip IP) String() string {
-	return ip.IP.To4().String()
+	return ip.IP.String()
 }
 
 func (ip IP) Mask(mask int) IP {
-	return IP{IP: ip.IP.Mask(net.CIDRMask(mask, 32))}
+	return IP{IP: MaskToIP(mask, ip.ver)}
 }
 
 // NewIPs parse string to ip , auto skip wrong ip
 func NewIPs(input []string) IPs {
 	ips := make(IPs, len(input))
 	for _, ip := range input {
-		i, err := ParseIP(ip)
+		i, err := ParseHostToIP(ip)
 		if err != nil {
 			continue
 		}
@@ -130,7 +170,6 @@ func (is IPs) Approx() CIDRs {
 	cidrMap := make(map[string]*CIDR)
 
 	for _, ip := range is {
-		fmt.Println(ip.String())
 		if n, ok := cidrMap[ip.Mask(24).String()]; ok {
 			var baseNet byte
 			var nowN, newN byte
@@ -147,7 +186,7 @@ func (is IPs) Approx() CIDRs {
 				}
 			}
 		} else {
-			cidrMap[ip.Mask(24).String()] = &CIDR{ip, 32}
+			cidrMap[ip.Mask(24).String()] = NewCIDR(ip.String(), 32)
 		}
 	}
 

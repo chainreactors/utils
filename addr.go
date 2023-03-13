@@ -5,12 +5,12 @@ import (
 )
 
 func NewAddrWithPort(ip, port string) *Addr {
-	return &Addr{NewIP(ip), port}
+	return &Addr{ParseIP(ip), port}
 }
 
 func NewAddr(s string) *Addr {
 	if ip, port, err := net.SplitHostPort(s); err == nil {
-		return &Addr{NewIP(ip), port}
+		return &Addr{ParseIP(ip), port}
 	}
 	return nil
 }
@@ -39,7 +39,7 @@ func NewAddrsWithDefaultPort(ss []string, port string) Addrs {
 	for _, s := range ss {
 		if addr := NewAddr(s); addr != nil {
 			addrs = append(addrs, addr)
-		} else if ip := NewIP(s); ip != nil {
+		} else if ip := ParseIP(s); ip != nil {
 			addrs = append(addrs, &Addr{ip, port})
 		}
 	}
@@ -47,10 +47,6 @@ func NewAddrsWithDefaultPort(ss []string, port string) Addrs {
 }
 
 type Addrs []*Addr
-
-func (as Addrs) Set() {
-
-}
 
 func NewAddrsWithPorts(ips []string, ports interface{}) *AddrsGenerator {
 	switch ports.(type) {
