@@ -52,7 +52,7 @@ type CIDR struct {
 	*IP
 	Mask   int
 	maskIP net.IP
-	cur    net.IP
+	cur    *IP
 	count  int
 	max    int
 }
@@ -75,13 +75,13 @@ func (c *CIDR) FirstIP() *IP {
 		for i := 0; i < 4; i++ {
 			ip[i] = c.IP.IP[i] & c.maskIP[i]
 		}
-		return &IP{IP: ip}
+		return &IP{IP: ip, ver: 4}
 	} else {
 		ip := make(net.IP, 16)
 		for i := 0; i < 16; i++ {
 			ip[i] = c.IP.IP[i] & c.maskIP[i]
 		}
-		return &IP{IP: ip}
+		return &IP{IP: ip, ver: 6}
 	}
 }
 
@@ -133,6 +133,20 @@ func (c *CIDR) Count() int {
 	}
 }
 
+func (c *CIDR) Compare(other *CIDR) int {
+	if i := c.FirstIP().Compare(other.FirstIP()); i < 0 {
+		return -1
+	} else if i > 0 {
+		return 1
+	} else {
+		if c.Mask < other.Mask {
+			return -1
+		} else {
+			return 1
+		}
+	}
+}
+
 func (c *CIDR) Range() (first, final uint) {
 	if c.ver == 6 {
 		return 0, 0
@@ -142,13 +156,16 @@ func (c *CIDR) Range() (first, final uint) {
 	return first, final
 }
 
-func (c *CIDR) RangeIP() (firstip, finalip *IP) {
-	if c.ver == 6 {
-		return nil, nil
-	}
-	firstip = c.FirstIP()
-	finalip = NewIP(firstip.Int() | uint(math.Pow(2, float64(32-c.Mask))-1))
-	return firstip, finalip
+func (c *CIDR) RangeIP() chan *IP {
+	ch := make(chan *IP)
+	go func() {
+		for i := 0; i < c.max; i++ {
+			ch <- c.Next()
+		}
+		close(ch)
+	}()
+
+	return ch
 }
 
 func (c *CIDR) ContainsCIDR(cidr *CIDR) bool {
@@ -162,50 +179,28 @@ func (c *CIDR) ContainsIP(ip *IP) bool {
 func (c *CIDR) Next() *IP {
 	if c.count == 0 {
 		c.count++
-		return &IP{IP: c.cur}
+		return c.cur.Copy()
 	}
+
 	if c.count >= c.max {
 		c.Reset()
 		return c.Next()
 	}
-
-	c.cur[c.Len()-1]++
 	c.count++
-	for i := len(c.cur) - 1; i > 0; i-- {
-		if c.cur[i] == 0 {
-			c.cur[i-1]++
-			if c.cur[i-1] != 0 {
-				break
-			} else {
-				continue
-			}
-		} else {
-			break
-		}
-	}
-	newip := make(net.IP, c.Len())
-	copy(newip, c.cur)
-	return &IP{IP: newip}
+	c.cur.Next()
+	return c.cur.Copy()
 }
 
 func (c *CIDR) Reset() {
 	c.max = c.Count()
 	c.count = 0
-	c.cur = c.FirstIP().IP
+	c.cur = c.FirstIP()
 }
 
 type CIDRs []*CIDR
 
 func (cs CIDRs) Less(i, j int) bool {
-	ipi := cs[i].FirstIP().Int()
-	ipj := cs[j].FirstIP().Int()
-	if ipi == ipj {
-		if cs[i].Mask < cs[j].Mask {
-			return true
-		} else {
-			return false
-		}
-	} else if ipi < ipj {
+	if cs[i].Compare(cs[j]) < 0 {
 		return true
 	} else {
 		return false

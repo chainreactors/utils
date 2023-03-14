@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -39,15 +40,15 @@ func MaskToIP(mask, ver int) net.IP {
 	return nil
 }
 
-//func Ip2Int(ip string) uint {
-//	s2ip := net.ParseIP(ip).To4()
-//	return uint(binary.BigEndian.Uint32(s2ip))
-//}
-//
-//func Int2Ip(ipint uint) string {
-//	ip := net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}
-//	return ip.String()
-//}
+func Ip2Intv4(ip string) uint {
+	s2ip := net.ParseIP(ip).To4()
+	return uint(binary.BigEndian.Uint32(s2ip))
+}
+
+func Int2Ipv4(ipint uint) string {
+	ip := net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}
+	return ip.String()
+}
 
 func DistinguishIPVersion(ip net.IP) int {
 	switch len(ip) {
@@ -67,16 +68,25 @@ func ParseIP(s string) *IP {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '.':
-			return &IP{IP: ip, ver: 4}
+			return &IP{IP: ip.To4(), ver: 4}
 		case ':':
-			return &IP{IP: ip, ver: 6}
+			return &IP{IP: ip.To16(), ver: 6}
 		}
 	}
 	return nil
 }
 
-func NewIP(ipint uint) *IP {
-	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}, ver: 4}
+//func NewIP(ipint uint) *IP {
+//	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}, ver: 4}
+//}
+func NewIP(ip net.IP) *IP {
+	i := &IP{IP: ip}
+	if len(i.IP) == net.IPv4len {
+		i.ver = 4
+	} else {
+		i.ver = 6
+	}
+	return i
 }
 
 // ParseHostToIP parse host to ip and validate ip format
@@ -106,23 +116,63 @@ type IP struct {
 	Host string
 }
 
-func (ip IP) Len() int {
-	return len(ip.IP)
+func (ip *IP) Len() int {
+	if ip.ver == 4 {
+		return net.IPv4len
+	} else if ip.ver == 6 {
+		return net.IPv6len
+	} else {
+		return 0
+	}
 }
 
-func (ip IP) Int() uint {
+func (ip *IP) Int() uint {
 	if ip.ver == 4 {
 		return uint(binary.BigEndian.Uint32(ip.IP.To4()))
 	}
 	return 0
 }
 
-func (ip IP) String() string {
+func (ip *IP) String() string {
 	return ip.IP.String()
 }
 
-func (ip IP) Mask(mask int) IP {
-	return IP{IP: MaskToIP(mask, ip.ver)}
+func (ip *IP) Mask(mask int) *IP {
+	return &IP{IP: MaskToIP(mask, ip.ver)}
+}
+
+func (ip *IP) Equal(other *IP) bool {
+	return bytes.Equal(ip.IP, other.IP)
+}
+
+func (ip *IP) Compare(other *IP) int {
+	if ip.ver != other.ver {
+		return 1
+	}
+	return bytes.Compare(ip.IP, other.IP)
+}
+
+func (ip *IP) Copy() *IP {
+	newip := make(net.IP, ip.Len())
+	copy(newip, ip.IP)
+	return &IP{IP: newip, ver: ip.ver, Host: ip.Host}
+}
+
+func (ip *IP) Next() *IP {
+	ip.IP[ip.Len()-1]++
+	for i := ip.Len() - 1; i > 0; i-- {
+		if ip.IP[i] == 0 {
+			ip.IP[i-1]++
+			if ip.IP[i-1] != 0 {
+				break
+			} else {
+				continue
+			}
+		} else {
+			break
+		}
+	}
+	return ip
 }
 
 // NewIPs parse string to ip , auto skip wrong ip
@@ -141,9 +191,7 @@ func NewIPs(input []string) IPs {
 type IPs []*IP
 
 func (is IPs) Less(i, j int) bool {
-	ipi := is[i].Int()
-	ipj := is[j].Int()
-	if ipi < ipj {
+	if is[i].Compare(is[j]) < 0 {
 		return true
 	} else {
 		return false
