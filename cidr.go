@@ -19,12 +19,22 @@ func SplitCIDR(cidr string) (string, int) {
 
 func NewCIDR(ip string, mask int) *CIDR {
 	c := &CIDR{IP: ParseIP(ip), Mask: mask}
+	if c.IP == nil {
+		return nil
+	}
+	if c.Mask == 0 {
+		if c.ver == 4 {
+			c.Mask = 32
+		} else {
+			c.Mask = 128
+		}
+	}
 	c.maskIP = MaskToIP(mask, c.ver)
 	c.Reset()
 	return c
 }
 
-func ParseCIDR(target string) (*CIDR, error) {
+func ParseCIDR(target string) *CIDR {
 	// return ip, hosts
 	var ip string
 	var mask int
@@ -33,14 +43,9 @@ func ParseCIDR(target string) (*CIDR, error) {
 		ip, mask = SplitCIDR(target)
 	} else {
 		ip = target
-		mask = 32
 	}
 
-	if parsedIp, err := ParseHostToIP(ip); err == nil {
-		return NewCIDR(parsedIp.String(), mask), nil
-	} else {
-		return nil, err
-	}
+	return NewCIDR(ip, mask)
 }
 
 type CIDR struct {
