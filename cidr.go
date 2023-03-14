@@ -70,11 +70,7 @@ func (c *CIDR) IPString() string {
 }
 
 func (c *CIDR) FirstIP() *IP {
-	ip := make(net.IP, c.Len())
-	for i := 0; i < c.Len(); i++ {
-		ip[i] = c.IP.IP[i] & c.maskIP.IP[i]
-	}
-	return &IP{IP: ip, ver: c.ver}
+	return c.IP.MaskNet(c.maskIP)
 }
 
 //func (c *CIDR) FirstIP() *IP {

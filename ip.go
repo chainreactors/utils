@@ -154,6 +154,19 @@ func (ip *IP) MaskNet(mask *IP) *IP {
 	return &IP{IP: newip, ver: ip.ver}
 }
 
+func (ip *IP) Mask24() *IP {
+	i := ip.Copy()
+	i.IP[3] = 0
+	return i
+}
+
+func (ip *IP) Mask16() *IP {
+	i := ip.Copy()
+	i.IP[3] = 0
+	i.IP[4] = 0
+	return i
+}
+
 func (ip *IP) Equal(other *IP) bool {
 	return bytes.Equal(ip.IP, other.IP)
 }
