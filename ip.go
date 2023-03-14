@@ -20,7 +20,7 @@ func MaskToIPv4(mask int) *IP {
 	for i := 0; i < mask; i++ {
 		subnetMask[i/8] |= 1 << uint(7-i%8) // 根据子网掩码长度设置相应位为1
 	}
-	return &IP{IP: subnetMask, ver: 4}
+	return &IP{IP: subnetMask, Ver: 4}
 }
 
 func MaskToIPv6(mask int) *IP {
@@ -28,7 +28,7 @@ func MaskToIPv6(mask int) *IP {
 	for i := 0; i < mask; i++ {
 		subnetMask[i/8] |= 1 << uint(7-i%8) // 根据子网掩码长度设置相应位为1
 	}
-	return &IP{IP: subnetMask, ver: 6}
+	return &IP{IP: subnetMask, Ver: 6}
 }
 
 func MaskToIP(mask, ver int) *IP {
@@ -68,23 +68,23 @@ func ParseIP(s string) *IP {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '.':
-			return &IP{IP: ip.To4(), ver: 4}
+			return &IP{IP: ip.To4(), Ver: 4}
 		case ':':
-			return &IP{IP: ip.To16(), ver: 6}
+			return &IP{IP: ip.To16(), Ver: 6}
 		}
 	}
 	return nil
 }
 
 //func NewIP(ipint uint) *IP {
-//	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}, ver: 4}
+//	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}, Ver: 4}
 //}
 func NewIP(ip net.IP) *IP {
 	i := &IP{IP: ip}
 	if len(i.IP) == net.IPv4len {
-		i.ver = 4
+		i.Ver = 4
 	} else {
-		i.ver = 6
+		i.Ver = 6
 	}
 	return i
 }
@@ -112,14 +112,14 @@ func ParseHostToIP(target string) (*IP, error) {
 
 type IP struct {
 	IP   net.IP
-	ver  int
+	Ver  int
 	Host string
 }
 
 func (ip *IP) Len() int {
-	if ip.ver == 4 {
+	if ip.Ver == 4 {
 		return net.IPv4len
-	} else if ip.ver == 6 {
+	} else if ip.Ver == 6 {
 		return net.IPv6len
 	} else {
 		return 0
@@ -127,7 +127,7 @@ func (ip *IP) Len() int {
 }
 
 func (ip *IP) Int() uint {
-	if ip.ver == 4 {
+	if ip.Ver == 4 {
 		return uint(binary.BigEndian.Uint32(ip.IP.To4()))
 	}
 	return 0
@@ -139,11 +139,11 @@ func (ip *IP) String() string {
 
 func (ip *IP) Mask(mask int) *IP {
 	newip := make(net.IP, ip.Len())
-	maskip := MaskToIP(mask, ip.ver)
+	maskip := MaskToIP(mask, ip.Ver)
 	for i := 0; i < ip.Len(); i++ {
 		newip[i] = ip.IP[i] & maskip.IP[i]
 	}
-	return &IP{IP: newip, ver: ip.ver}
+	return &IP{IP: newip, Ver: ip.Ver}
 }
 
 func (ip *IP) MaskNet(mask *IP) *IP {
@@ -151,7 +151,7 @@ func (ip *IP) MaskNet(mask *IP) *IP {
 	for i := 0; i < ip.Len(); i++ {
 		newip[i] = ip.IP[i] & mask.IP[i]
 	}
-	return &IP{IP: newip, ver: ip.ver}
+	return &IP{IP: newip, Ver: ip.Ver}
 }
 
 func (ip *IP) Mask24() *IP {
@@ -172,7 +172,7 @@ func (ip *IP) Equal(other *IP) bool {
 }
 
 func (ip *IP) Compare(other *IP) int {
-	if ip.ver != other.ver {
+	if ip.Ver != other.Ver {
 		return 1
 	}
 	return bytes.Compare(ip.IP, other.IP)
@@ -181,7 +181,7 @@ func (ip *IP) Compare(other *IP) int {
 func (ip *IP) Copy() *IP {
 	newip := make(net.IP, ip.Len())
 	copy(newip, ip.IP)
-	return &IP{IP: newip, ver: ip.ver, Host: ip.Host}
+	return &IP{IP: newip, Ver: ip.Ver, Host: ip.Host}
 }
 
 func (ip *IP) Next() *IP {

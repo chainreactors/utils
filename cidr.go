@@ -23,13 +23,13 @@ func NewCIDR(ip string, mask int) *CIDR {
 		return nil
 	}
 	if c.Mask == 0 {
-		if c.ver == 4 {
+		if c.Ver == 4 {
 			c.Mask = 32
 		} else {
 			c.Mask = 128
 		}
 	}
-	c.maskIP = MaskToIP(mask, c.ver)
+	c.maskIP = MaskToIP(mask, c.Ver)
 	c.Reset()
 	return c
 }
@@ -52,8 +52,8 @@ type CIDR struct {
 	*IP
 	Mask   int
 	maskIP *IP
-	cur    *IP
-	count  int
+	curIP  *IP
+	cur    int
 	max    int
 }
 
@@ -82,7 +82,7 @@ func (c *CIDR) LastIP() *IP {
 	for i := 0; i < c.Len(); i++ {
 		ip[i] = c.IP.IP[i] | ^c.maskIP.IP[i]
 	}
-	return &IP{IP: ip, ver: c.ver}
+	return &IP{IP: ip, Ver: c.Ver}
 }
 
 //func (c *CIDR) LastIP() *IP {
@@ -90,15 +90,15 @@ func (c *CIDR) LastIP() *IP {
 //}
 
 func (c *CIDR) Net() *net.IPNet {
-	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(c.Mask, c.ver).IP)}
+	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(c.Mask, c.Ver).IP)}
 }
 
 func (c *CIDR) NetWithMask(mask int) *net.IPNet {
-	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(mask, c.ver).IP)}
+	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(mask, c.Ver).IP)}
 }
 
 func (c *CIDR) IPMask() net.IPMask {
-	if c.ver == 4 {
+	if c.Ver == 4 {
 		return net.CIDRMask(c.Mask, 32)
 	} else {
 		return net.CIDRMask(c.Mask, 128)
@@ -106,7 +106,7 @@ func (c *CIDR) IPMask() net.IPMask {
 }
 
 func (c *CIDR) Count() int {
-	if c.ver == 4 {
+	if c.Ver == 4 {
 		return 1 << uint(32-c.Mask)
 	} else {
 		return 1 << uint(128-c.Mask)
@@ -128,7 +128,7 @@ func (c *CIDR) Compare(other *CIDR) int {
 }
 
 func (c *CIDR) Range() (first, final uint) {
-	if c.ver == 6 {
+	if c.Ver == 6 {
 		return 0, 0
 	}
 	first = c.FirstIP().Int()
@@ -157,24 +157,24 @@ func (c *CIDR) ContainsIP(ip *IP) bool {
 }
 
 func (c *CIDR) Next() *IP {
-	if c.count == 0 {
-		c.count++
-		return c.cur.Copy()
+	if c.cur == 0 {
+		c.cur++
+		return c.curIP.Copy()
 	}
 
-	if c.count >= c.max {
+	if c.cur >= c.max {
 		c.Reset()
 		return c.Next()
 	}
-	c.count++
-	c.cur.Next()
-	return c.cur.Copy()
+	c.cur++
+	c.curIP.Next()
+	return c.curIP.Copy()
 }
 
 func (c *CIDR) Reset() {
 	c.max = c.Count()
-	c.count = 0
-	c.cur = c.FirstIP()
+	c.cur = 0
+	c.curIP = c.FirstIP()
 }
 
 type CIDRs []*CIDR
