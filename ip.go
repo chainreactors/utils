@@ -162,8 +162,8 @@ func (ip *IP) Mask24() *IP {
 
 func (ip *IP) Mask16() *IP {
 	i := ip.Copy()
+	i.IP[2] = 0
 	i.IP[3] = 0
-	i.IP[4] = 0
 	return i
 }
 
