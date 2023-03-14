@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 )
@@ -39,5 +40,26 @@ func TestCIDRs_Less(t *testing.T) {
 	sort.Sort(cs)
 	for _, c := range cs.Strings() {
 		println(c)
+	}
+}
+
+func TestCIDR_Split(t *testing.T) {
+	c := ParseCIDR("192.168.1.1/20")
+	cs, _ := c.Split(24)
+	fmt.Println(cs.Strings())
+}
+
+func TestCIDRs_SprayRange(t *testing.T) {
+	//c := ParseCIDR("192.168.1.1/20")
+	//cs1, _ := c.Split(24)
+	//for i := range cs1.SprayRange() {
+	//	println(i.String())
+	//}
+
+	var cs CIDRs
+	cs = append(cs, ParseCIDR("192.168.1.1/24"))
+	cs = append(cs, ParseCIDR("192.168.2.55/25"))
+	for i := range cs.Range() {
+		println(i.String())
 	}
 }

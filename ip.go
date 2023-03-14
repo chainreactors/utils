@@ -138,12 +138,8 @@ func (ip *IP) String() string {
 }
 
 func (ip *IP) Mask(mask int) *IP {
-	newip := make(net.IP, ip.Len())
 	maskip := MaskToIP(mask, ip.Ver)
-	for i := 0; i < ip.Len(); i++ {
-		newip[i] = ip.IP[i] & maskip.IP[i]
-	}
-	return &IP{IP: newip, Ver: ip.Ver}
+	return ip.MaskNet(maskip)
 }
 
 func (ip *IP) MaskNet(mask *IP) *IP {
@@ -152,6 +148,16 @@ func (ip *IP) MaskNet(mask *IP) *IP {
 		newip[i] = ip.IP[i] & mask.IP[i]
 	}
 	return &IP{IP: newip, Ver: ip.Ver}
+}
+
+func (ip *IP) CIDR(mask int) *CIDR {
+	c := &CIDR{
+		IP:     ip.Copy(),
+		Mask:   mask,
+		maskIP: MaskToIP(mask, ip.Ver),
+	}
+	c.Reset()
+	return c
 }
 
 func (ip *IP) Mask24() *IP {

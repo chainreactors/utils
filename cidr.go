@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"math"
 	"net"
 	"sort"
 	"strings"
@@ -73,10 +72,6 @@ func (c *CIDR) FirstIP() *IP {
 	return c.IP.MaskNet(c.maskIP)
 }
 
-//func (c *CIDR) FirstIP() *IP {
-//	return NewIP(c.IP.Int() & MaskToIPInt(c.Mask))
-//}
-
 func (c *CIDR) LastIP() *IP {
 	ip := make(net.IP, c.Len())
 	for i := 0; i < c.Len(); i++ {
@@ -85,9 +80,21 @@ func (c *CIDR) LastIP() *IP {
 	return &IP{IP: ip, Ver: c.Ver}
 }
 
-//func (c *CIDR) LastIP() *IP {
-//	return NewIP(c.IP.Int() | ^MaskToIPInt(c.Mask))
-//}
+func (c *CIDR) Split(mask int) (CIDRs, error) {
+	if c.Mask > mask {
+		return nil, fmt.Errorf("mask error, %d > %d", mask, c.Mask)
+	}
+	block := 1 << uint(mask-c.Mask)
+	var cs CIDRs
+	for i := 0; i < block; i++ {
+		if i == 0 {
+			cs = append(cs, c.FirstIP().CIDR(mask))
+		} else {
+			cs = append(cs, cs[i-1].LastIP().Next().CIDR(mask))
+		}
+	}
+	return cs, nil
+}
 
 func (c *CIDR) Net() *net.IPNet {
 	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(c.Mask, c.Ver).IP)}
@@ -127,16 +134,16 @@ func (c *CIDR) Compare(other *CIDR) int {
 	}
 }
 
-func (c *CIDR) Range() (first, final uint) {
-	if c.Ver == 6 {
-		return 0, 0
-	}
-	first = c.FirstIP().Int()
-	final = first | uint(math.Pow(2, float64(32-c.Mask))-1)
-	return first, final
-}
+//func (c *CIDR) Range() (first, final uint) {
+//	if c.Ver == 6 {
+//		return 0, 0
+//	}
+//	first = c.FirstIP().Int()
+//	final = first | uint(math.Pow(2, float64(32-c.Mask))-1)
+//	return first, final
+//}
 
-func (c *CIDR) RangeIP() chan *IP {
+func (c *CIDR) Range() chan *IP {
 	ch := make(chan *IP)
 	go func() {
 		for i := 0; i < c.max; i++ {
@@ -220,6 +227,40 @@ func (cs CIDRs) Coalesce() CIDRs {
 		i = j
 	}
 	return newCIDRs
+}
+
+func (cs CIDRs) Range() chan *IP {
+	ch := make(chan *IP)
+	go func() {
+		for _, c := range cs {
+			for ip := range c.Range() {
+				ch <- ip
+			}
+		}
+		close(ch)
+	}()
+	return ch
+}
+
+func (cs CIDRs) SprayRange() chan *IP {
+	ch := make(chan *IP)
+	length := cs.Len()
+	count := cs.Count()
+	go func() {
+		var i, vaild int
+		for {
+			if vaild == count {
+				break
+			}
+			if cs[i%length].cur < cs[i%length].max {
+				ch <- cs[i%length].Next()
+				vaild++
+			}
+			i++
+		}
+		close(ch)
+	}()
+	return ch
 }
 
 func (cs CIDRs) Count() int {
