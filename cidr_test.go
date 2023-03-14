@@ -50,16 +50,17 @@ func TestCIDR_Split(t *testing.T) {
 }
 
 func TestCIDRs_SprayRange(t *testing.T) {
-	//c := ParseCIDR("192.168.1.1/20")
-	//cs1, _ := c.Split(24)
-	//for i := range cs1.SprayRange() {
-	//	println(i.String())
-	//}
-
 	var cs CIDRs
 	cs = append(cs, ParseCIDR("192.168.1.1/24"))
 	cs = append(cs, ParseCIDR("192.168.2.55/25"))
-	for i := range cs.Range() {
+	for i := range cs.SprayRange() {
+		println(i.String())
+	}
+}
+
+func TestCIDR_Range(t *testing.T) {
+	c := ParseCIDR("192.168.1.1")
+	for i := range c.Range() {
 		println(i.String())
 	}
 }

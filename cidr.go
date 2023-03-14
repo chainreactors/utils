@@ -28,7 +28,7 @@ func NewCIDR(ip string, mask int) *CIDR {
 			c.Mask = 128
 		}
 	}
-	c.maskIP = MaskToIP(mask, c.Ver)
+	c.maskIP = MaskToIP(c.Mask, c.Ver)
 	c.Reset()
 	return c
 }
