@@ -15,23 +15,23 @@ func IsIp(ip string) bool {
 	return false
 }
 
-func MaskToIPv4(mask int) net.IP {
+func MaskToIPv4(mask int) *IP {
 	subnetMask := make([]byte, net.IPv4len) // 创建长度为4的字节数组
 	for i := 0; i < mask; i++ {
 		subnetMask[i/8] |= 1 << uint(7-i%8) // 根据子网掩码长度设置相应位为1
 	}
-	return subnetMask
+	return &IP{IP: subnetMask, ver: 4}
 }
 
-func MaskToIPv6(mask int) net.IP {
+func MaskToIPv6(mask int) *IP {
 	subnetMask := make([]byte, net.IPv6len) // 创建长度为4的字节数组
 	for i := 0; i < mask; i++ {
 		subnetMask[i/8] |= 1 << uint(7-i%8) // 根据子网掩码长度设置相应位为1
 	}
-	return subnetMask
+	return &IP{IP: subnetMask, ver: 6}
 }
 
-func MaskToIP(mask, ver int) net.IP {
+func MaskToIP(mask, ver int) *IP {
 	if ver == 4 {
 		return MaskToIPv4(mask)
 	} else if ver == 6 {
@@ -138,7 +138,20 @@ func (ip *IP) String() string {
 }
 
 func (ip *IP) Mask(mask int) *IP {
-	return &IP{IP: MaskToIP(mask, ip.ver)}
+	newip := make(net.IP, ip.Len())
+	maskip := MaskToIP(mask, ip.ver)
+	for i := 0; i < ip.Len(); i++ {
+		newip[i] = ip.IP[i] & maskip.IP[i]
+	}
+	return &IP{IP: newip, ver: ip.ver}
+}
+
+func (ip *IP) MaskNet(mask *IP) *IP {
+	newip := make(net.IP, ip.Len())
+	for i := 0; i < ip.Len(); i++ {
+		newip[i] = ip.IP[i] & mask.IP[i]
+	}
+	return &IP{IP: newip, ver: ip.ver}
 }
 
 func (ip *IP) Equal(other *IP) bool {

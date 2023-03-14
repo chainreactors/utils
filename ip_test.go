@@ -52,3 +52,9 @@ func TestIP_Compare(t *testing.T) {
 	sort.Sort(ips)
 	fmt.Println(ips)
 }
+
+func TestIP_Mask(t *testing.T) {
+	i := ParseIP("192.168.1.111")
+	m := i.Mask(24)
+	println(i.String(), m.String())
+}

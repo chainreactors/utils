@@ -51,7 +51,7 @@ func ParseCIDR(target string) *CIDR {
 type CIDR struct {
 	*IP
 	Mask   int
-	maskIP net.IP
+	maskIP *IP
 	cur    *IP
 	count  int
 	max    int
@@ -70,19 +70,11 @@ func (c *CIDR) IPString() string {
 }
 
 func (c *CIDR) FirstIP() *IP {
-	if c.ver == 4 {
-		ip := make(net.IP, 4)
-		for i := 0; i < 4; i++ {
-			ip[i] = c.IP.IP[i] & c.maskIP[i]
-		}
-		return &IP{IP: ip, ver: 4}
-	} else {
-		ip := make(net.IP, 16)
-		for i := 0; i < 16; i++ {
-			ip[i] = c.IP.IP[i] & c.maskIP[i]
-		}
-		return &IP{IP: ip, ver: 6}
+	ip := make(net.IP, c.Len())
+	for i := 0; i < c.Len(); i++ {
+		ip[i] = c.IP.IP[i] & c.maskIP.IP[i]
 	}
+	return &IP{IP: ip, ver: c.ver}
 }
 
 //func (c *CIDR) FirstIP() *IP {
@@ -90,19 +82,11 @@ func (c *CIDR) FirstIP() *IP {
 //}
 
 func (c *CIDR) LastIP() *IP {
-	if c.ver == 4 {
-		ip := make(net.IP, 4)
-		for i := 0; i < 4; i++ {
-			ip[i] = c.IP.IP[i] | ^c.maskIP[i]
-		}
-		return &IP{IP: ip}
-	} else {
-		ip := make(net.IP, 16)
-		for i := 0; i < 16; i++ {
-			ip[i] = c.IP.IP[i] | ^c.maskIP[i]
-		}
-		return &IP{IP: ip}
+	ip := make(net.IP, c.Len())
+	for i := 0; i < c.Len(); i++ {
+		ip[i] = c.IP.IP[i] | ^c.maskIP.IP[i]
 	}
+	return &IP{IP: ip, ver: c.ver}
 }
 
 //func (c *CIDR) LastIP() *IP {
@@ -110,11 +94,11 @@ func (c *CIDR) LastIP() *IP {
 //}
 
 func (c *CIDR) Net() *net.IPNet {
-	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(c.Mask, c.ver))}
+	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(c.Mask, c.ver).IP)}
 }
 
 func (c *CIDR) NetWithMask(mask int) *net.IPNet {
-	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(c.Mask, c.ver))}
+	return &net.IPNet{c.IP.IP, net.IPMask(MaskToIP(mask, c.ver).IP)}
 }
 
 func (c *CIDR) IPMask() net.IPMask {
