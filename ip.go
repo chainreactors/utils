@@ -49,12 +49,26 @@ func Int2Ipv4(ipint uint) string {
 	return ip.String()
 }
 
+// Is p all zeros?
+func isZeros(p net.IP) bool {
+	for i := 0; i < len(p); i++ {
+		if p[i] != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func DistinguishIPVersion(ip net.IP) int {
 	switch len(ip) {
 	case net.IPv4len:
 		return 4
 	case net.IPv6len:
-		return 6
+		if isZeros(ip[0:10]) && ip[10] == 0xff && ip[11] == 0xff {
+			return 4
+		} else {
+			return 6
+		}
 	}
 	return 0
 }
