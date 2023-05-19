@@ -51,9 +51,9 @@ type Addrs []*Addr
 func NewAddrsWithPorts(ips []string, ports interface{}) *AddrsGenerator {
 	switch ports.(type) {
 	case string:
-		return &AddrsGenerator{NewIPs(ips), NewPorts(ports.(string))}
+		return &AddrsGenerator{ParseIPs(ips), NewPorts(ports.(string))}
 	default:
-		return &AddrsGenerator{NewIPs(ips), ports.([]string)}
+		return &AddrsGenerator{ParseIPs(ips), ports.([]string)}
 	}
 }
 

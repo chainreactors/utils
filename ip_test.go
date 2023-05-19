@@ -14,6 +14,8 @@ func TestParseIP(t *testing.T) {
 	println(ParseIP("2001:0:c38c:ffff:ffff::").String())
 	println(ParseIP("327.0.0.1"))
 	println(ParseIP("2001:0:c38c:ffff:ffff:ffff:ffff:ffff1"))
+	println(ParseIP("baidu.com").String())
+	println(ParseIP("http://baidu.com/").String())
 }
 
 func BenchmarkParseIP(t *testing.B) {

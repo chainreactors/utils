@@ -59,7 +59,7 @@ func TestCIDRs_SprayRange(t *testing.T) {
 }
 
 func TestCIDR_Range(t *testing.T) {
-	c := ParseCIDR("192.168.1.1")
+	c := ParseCIDR("fe80::4e1d:bc74:cbd1:bd62")
 	for i := range c.Range() {
 		println(i.String())
 	}

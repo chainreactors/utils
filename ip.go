@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"strings"
 )
 
 func IsIp(ip string) bool {
@@ -63,8 +62,14 @@ func DistinguishIPVersion(ip net.IP) int {
 func ParseIP(s string) *IP {
 	ip := net.ParseIP(s)
 	if ip == nil {
-		return nil
+		i, err := ParseHostToIP(s)
+		if err != nil {
+			return nil
+		} else {
+			return i
+		}
 	}
+
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '.':
@@ -91,12 +96,7 @@ func NewIP(ip net.IP) *IP {
 
 // ParseHostToIP parse host to ip and validate ip format
 func ParseHostToIP(target string) (*IP, error) {
-	target = strings.TrimSpace(target)
-	if ip := ParseIP(target); ip != nil {
-		return ip, nil
-	}
-
-	iprecords, err := net.LookupIP(target)
+	iprecords, err := net.LookupIP(ParseHost(target))
 	if err != nil {
 		return nil, fmt.Errorf("Unable to resolve domain name:" + target + ". SKIPPED!")
 	}
@@ -207,12 +207,12 @@ func (ip *IP) Next() *IP {
 	return ip
 }
 
-// NewIPs parse string to ip , auto skip wrong ip
-func NewIPs(input []string) IPs {
+// ParseIPs parse string to ip , auto skip wrong ip
+func ParseIPs(input []string) IPs {
 	ips := make(IPs, len(input))
 	for _, ip := range input {
-		i, err := ParseHostToIP(ip)
-		if err != nil {
+		i := ParseIP(ip)
+		if i == nil {
 			continue
 		}
 		ips = append(ips, i)
@@ -221,6 +221,14 @@ func NewIPs(input []string) IPs {
 }
 
 type IPs []*IP
+
+func (is IPs) CIDRs() CIDRs {
+	cs := make(CIDRs, len(is))
+	for i, c := range is {
+		cs[i] = c.CIDR(32)
+	}
+	return cs
+}
 
 func (is IPs) Less(i, j int) bool {
 	if is[i].Compare(is[j]) < 0 {

@@ -51,8 +51,8 @@ func ParsePorts(ports []string) []string {
 	return portSlice
 }
 
+// 将string格式的port range 转为单个port组成的slice
 func expandPorts(ports []string) []string {
-	// 将string格式的port range 转为单个port组成的slice
 	var tmpports []string
 	for _, pr := range ports {
 		if len(pr) == 0 {
@@ -70,6 +70,7 @@ func expandPorts(ports []string) []string {
 	return tmpports
 }
 
+// 将string格式的port range 转为单个port组成的slice
 func expandPort(port string) []string {
 	var tmpports []string
 	if strings.Contains(port, "-") {
