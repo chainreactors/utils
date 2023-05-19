@@ -118,7 +118,12 @@ func ParseHostToIP(target string) (*IP, error) {
 	for _, ip := range iprecords {
 		if ip != nil {
 			//Log.Important("parse domain SUCCESS, map " + target + " to " + ip.String())
-			return &IP{ip, DistinguishIPVersion(ip), target}, nil
+			switch DistinguishIPVersion(ip) {
+			case 4:
+				return &IP{ip.To4(), 4, target}, nil
+			case 6:
+				return &IP{ip.To16(), 6, target}, nil
+			}
 		}
 	}
 	return nil, fmt.Errorf("not found Ip address")
