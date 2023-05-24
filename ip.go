@@ -228,7 +228,7 @@ func (ip *IP) Next() *IP {
 
 // ParseIPs parse string to ip , auto skip wrong ip
 func ParseIPs(input []string) IPs {
-	ips := make(IPs, len(input))
+	var ips IPs
 	for _, ip := range input {
 		i := ParseIP(ip)
 		if i == nil {
