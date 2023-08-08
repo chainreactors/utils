@@ -7,6 +7,11 @@ import (
 	"net"
 )
 
+var (
+	IPV4 = 4
+	IPV6 = 6
+)
+
 func IsIp(ip string) bool {
 	if net.ParseIP(ip) != nil {
 		return true
@@ -37,6 +42,25 @@ func MaskToIP(mask, ver int) *IP {
 		return MaskToIPv6(mask)
 	}
 	return nil
+}
+
+func IPMaskToPrefixLength(ipMask net.IPMask) (int, error) {
+	mask := ipMask
+	if len(mask) != net.IPv4len && len(mask) != net.IPv6len {
+		return 0, fmt.Errorf("invalid IP mask length")
+	}
+
+	prefixLength := 0
+	for _, octet := range mask {
+		for i := 7; i >= 0; i-- {
+			if (octet>>uint(i))&1 == 0 {
+				return prefixLength, nil
+			}
+			prefixLength++
+		}
+	}
+
+	return prefixLength, nil
 }
 
 func Ip2Intv4(ip string) uint {
@@ -87,9 +111,9 @@ func ParseIP(s string) *IP {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '.':
-			return &IP{IP: ip.To4(), Ver: 4}
+			return &IP{IP: ip.To4(), Ver: IPV4}
 		case ':':
-			return &IP{IP: ip.To16(), Ver: 6}
+			return &IP{IP: ip.To16(), Ver: IPV6}
 		}
 	}
 	return nil
@@ -101,9 +125,9 @@ func ParseIP(s string) *IP {
 func NewIP(ip net.IP) *IP {
 	i := &IP{IP: ip}
 	if len(i.IP) == net.IPv4len {
-		i.Ver = 4
+		i.Ver = IPV4
 	} else {
-		i.Ver = 6
+		i.Ver = IPV6
 	}
 	return i
 }
@@ -120,9 +144,9 @@ func ParseHostToIP(target string) (*IP, error) {
 			//Log.Important("parse domain SUCCESS, map " + target + " to " + ip.String())
 			switch DistinguishIPVersion(ip) {
 			case 4:
-				return &IP{ip.To4(), 4, target}, nil
+				return &IP{ip.To4(), IPV4, target}, nil
 			case 6:
-				return &IP{ip.To16(), 6, target}, nil
+				return &IP{ip.To16(), IPV6, target}, nil
 			}
 		}
 	}
@@ -136,9 +160,9 @@ type IP struct {
 }
 
 func (ip *IP) Len() int {
-	if ip.Ver == 4 {
+	if ip.Ver == IPV4 {
 		return net.IPv4len
-	} else if ip.Ver == 6 {
+	} else if ip.Ver == IPV6 {
 		return net.IPv6len
 	} else {
 		return 0
@@ -146,7 +170,7 @@ func (ip *IP) Len() int {
 }
 
 func (ip *IP) Int() uint {
-	if ip.Ver == 4 {
+	if ip.Ver == IPV4 {
 		return uint(binary.BigEndian.Uint32(ip.IP.To4()))
 	}
 	return 0

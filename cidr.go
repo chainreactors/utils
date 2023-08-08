@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"github.com/chainreactors/utils/iputils"
 	"net"
 	"sort"
 	"strings"
@@ -14,6 +15,15 @@ func SplitCIDR(cidr string) (string, int) {
 	} else {
 		return tmp[0], 32
 	}
+}
+
+func DifferenceCIDR(target, exclude *CIDR) CIDRs {
+	var cidrs CIDRs
+	cidrNets := iputils.DifferenceCIDR(target.Net(), exclude.Net())
+	for _, c := range cidrNets {
+		cidrs = append(cidrs, NewCIDRFromNet(c))
+	}
+	return cidrs
 }
 
 func NewCIDR(ip string, mask int) *CIDR {
@@ -31,6 +41,23 @@ func NewCIDR(ip string, mask int) *CIDR {
 	c.maskIP = MaskToIP(c.Mask, c.Ver)
 	c.Reset()
 	return c
+}
+
+func NewCIDRFromNet(ip *net.IPNet) *CIDR {
+	mask, err := IPMaskToPrefixLength(ip.Mask)
+	if err != nil {
+		return nil
+	}
+
+	i := NewIP(ip.IP)
+	cidr := &CIDR{
+		IP:     i,
+		Mask:   mask,
+		maskIP: MaskToIP(mask, i.Ver),
+	}
+	cidr.Reset()
+	return cidr
+
 }
 
 func ParseCIDR(target string) *CIDR {
@@ -213,7 +240,7 @@ func (cs CIDRs) Strings() []string {
 func (cs CIDRs) Coalesce() CIDRs {
 	sort.Sort(cs)
 	var newCIDRs CIDRs
-	for i := 0; i < len(cs)-1; i++ {
+	for i := 0; i < len(cs); i++ {
 		j := i
 		for j < len(cs)-1 {
 			if !cs[j].ContainsCIDR(cs[j+1]) {
