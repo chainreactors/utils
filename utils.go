@@ -1,6 +1,8 @@
 package utils
 
-import "strconv"
+import (
+	"strconv"
+)
 
 func sliceUnique(ss []string) []string {
 	res := make([]string, 0, len(ss))
