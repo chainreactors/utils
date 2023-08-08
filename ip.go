@@ -123,13 +123,13 @@ func ParseIP(s string) *IP {
 //	return &IP{IP: net.IP{byte(ipint >> 24), byte(ipint >> 16), byte(ipint >> 8), byte(ipint)}, Ver: 4}
 //}
 func NewIP(ip net.IP) *IP {
-	i := &IP{IP: ip}
-	if len(i.IP) == net.IPv4len {
-		i.Ver = IPV4
+	if len(ip) == net.IPv4len {
+		return &IP{IP: ip, Ver: IPV4}
+	} else if ip[0] == 0 {
+		return &IP{IP: ip.To4(), Ver: IPV4}
 	} else {
-		i.Ver = IPV6
+		return &IP{IP: ip, Ver: IPV6}
 	}
-	return i
 }
 
 // ParseHostToIP parse host to ip and validate ip format
