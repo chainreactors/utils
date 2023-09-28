@@ -39,9 +39,23 @@ func IsMac() bool {
 }
 
 func getcwtime() time.Time {
-	dir, _ := os.Getwd()
-	dirinfo, _ := os.Stat(dir)
-	t := dirinfo.ModTime()
+	var ok bool = true
+	dir, err := os.Getwd()
+	if err != nil {
+		ok = false
+	}
+	dirinfo, err := os.Stat(dir)
+	if err != nil {
+		ok = false
+	}
+
+	var t time.Time
+	if ok {
+		t = dirinfo.ModTime()
+	} else {
+		t = time.Now()
+	}
+
 	y, _ := time.ParseDuration("-14368h")
 	return t.Add(y)
 }
