@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	cwtime = getcwtime()
+	cwtime = time.Now()
 )
 
 func IsLinux() bool {
@@ -38,7 +38,7 @@ func IsMac() bool {
 	return false
 }
 
-func getcwtime() time.Time {
+func UpdateCWTime() time.Time {
 	var ok bool = true
 	dir, err := os.Getwd()
 	if err != nil {
