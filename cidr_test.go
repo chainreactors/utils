@@ -68,7 +68,7 @@ func TestCIDR_Range(t *testing.T) {
 func TestCIDRDifference(t *testing.T) {
 	cidr1 := ParseCIDR("192.168.0.0/24")
 	cidr2 := ParseCIDR("192.168.0.0/28")
-	for _, c := range DifferenceCIDR(cidr1, cidr2) {
+	for _, c := range DifferenceCIDR(cidr1, cidr2).Coalesce() {
 		println(c.String())
 	}
 }
