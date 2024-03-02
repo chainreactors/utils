@@ -43,7 +43,7 @@ func Md5Hash(raw []byte) string {
 func Mmh3Hash32(raw []byte) string {
 	var h32 = murmur3.New32()
 	_, _ = h32.Write(standBase64(raw))
-	return fmt.Sprintf("%d", int(h32.Sum32()))
+	return fmt.Sprintf("%d", int32(h32.Sum32()))
 }
 
 func standBase64(braw []byte) []byte {
