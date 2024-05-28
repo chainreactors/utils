@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 func ToString(data interface{}) string {
@@ -62,4 +63,23 @@ func AsciiEncode(s string) string {
 	s = fmt.Sprintf("%q", s)
 	s = strings.Trim(s, "\"")
 	return s
+}
+
+// ref: https://www.anquanke.com/post/id/251097
+func UTF8ConvertString(src string) string {
+	var dst string
+	for i, r := range src {
+		var v string
+		if r == utf8.RuneError {
+			v = string(src[i])
+		} else {
+			v = string(r)
+		}
+		dst += v
+	}
+	return dst
+}
+
+func UTF8ConvertBytes(src []byte) []byte {
+	return []byte(UTF8ConvertString(string(src)))
 }
