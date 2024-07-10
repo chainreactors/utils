@@ -16,9 +16,9 @@ func (ps Ports) String() string {
 }
 
 var (
-	NameMap *PortMapper = &PortMapper{}
-	PortMap *PortMapper = &PortMapper{}
-	TagMap  *PortMapper = &PortMapper{}
+	NameMap PortMapper = PortMapper{}
+	PortMap PortMapper = PortMapper{}
+	TagMap  PortMapper = PortMapper{}
 )
 
 type PortMapper map[string][]string
@@ -27,12 +27,12 @@ func (p PortMapper) Get(name string) []string {
 	return p[name]
 }
 
-func (p *PortMapper) Set(name string, ports []string) {
-	(*p)[name] = ports
+func (p PortMapper) Set(name string, ports []string) {
+	p[name] = ports
 }
 
-func (p *PortMapper) Append(name string, ports ...string) {
-	(*p)[name] = append((*p)[name], ports...)
+func (p PortMapper) Append(name string, ports ...string) {
+	p[name] = append(p[name], ports...)
 }
 
 func ParsePort(portstring string) []string {
@@ -59,10 +59,10 @@ func expandPorts(ports []string) []string {
 			continue
 		}
 		pr = strings.TrimSpace(pr)
-		if pr[0] == 45 {
+		if pr[0] == '-' {
 			pr = "1" + pr
 		}
-		if pr[len(pr)-1] == 45 {
+		if pr[len(pr)-1] == '-' {
 			pr = pr + "65535"
 		}
 		tmpports = append(tmpports, expandPort(pr)...)
@@ -90,7 +90,7 @@ func expandPort(port string) []string {
 func choicePorts(portname string) []string {
 	var ports []string
 	if portname == "all" {
-		for p := range *PortMap {
+		for p := range PortMap {
 			ports = append(ports, p)
 		}
 		return ports
