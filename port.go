@@ -12,6 +12,10 @@ func ParsePortsString(s string) []string {
 	return PrePort.ParsePortString(s)
 }
 
+func ParsePortsSlice(ports []string) []string {
+	return PrePort.ParsePortSlice(ports)
+}
+
 type PortConfig struct {
 	Name  string   `json:"name" yaml:"name"`
 	Ports []string `json:"ports" yaml:"ports"`
