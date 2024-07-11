@@ -1,6 +1,7 @@
 package iutils
 
 import (
+	"math/rand"
 	"reflect"
 	"strings"
 )
@@ -23,7 +24,7 @@ func IntsContains(s []int, e int) bool {
 	return false
 }
 
-//切片去重
+// 切片去重
 func StringsUnique(ss []string) []string {
 	res := make([]string, 0, len(ss))
 	temp := map[string]struct{}{}
@@ -72,4 +73,11 @@ func UintSlice2str(i []uint) []string {
 		s[k] = ToString(v)
 	}
 	return s
+}
+
+func RandomChoice(choices []string) string {
+	if len(choices) == 0 {
+		return ""
+	}
+	return choices[rand.Intn(len(choices))]
 }
