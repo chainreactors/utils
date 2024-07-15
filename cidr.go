@@ -43,6 +43,17 @@ func NewCIDR(ip string, mask int) *CIDR {
 	return c
 }
 
+func ParseCIDRs(ips []string) CIDRs {
+	var cs CIDRs
+	for _, ip := range ips {
+		c := ParseCIDR(ip)
+		if c != nil {
+			cs = append(cs, c)
+		}
+	}
+	return cs
+}
+
 func NewCIDRFromNet(ip *net.IPNet) *CIDR {
 	mask, err := IPMaskToPrefixLength(ip.Mask)
 	if err != nil {
