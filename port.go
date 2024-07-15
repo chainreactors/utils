@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"github.com/chainreactors/utils/iutils"
 	"strconv"
 	"strings"
@@ -13,6 +14,10 @@ func ParsePortsString(s string) []string {
 }
 
 func ParsePortsSlice(ports []string) []string {
+	if PrePort == nil {
+		fmt.Println("PrePort is nil, please NewPortPreset")
+		return ports
+	}
 	return PrePort.ParsePortSlice(ports)
 }
 
