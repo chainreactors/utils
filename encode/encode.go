@@ -12,6 +12,7 @@ import (
 	"github.com/twmb/murmur3"
 	"io/ioutil"
 	"strconv"
+	"strings"
 )
 
 func Base64Decode(s string) []byte {
@@ -92,7 +93,9 @@ func parseHex(s string) uint64 {
 func MustDeflateCompress(input []byte) []byte {
 	output, err := DeflateCompress(input)
 	if err != nil {
-		panic(err)
+		if !IsEOF(err) {
+			panic(err)
+		}
 	}
 	return output
 }
@@ -113,7 +116,9 @@ func DeflateCompress(input []byte) ([]byte, error) {
 func MustDeflateDeCompress(input []byte) []byte {
 	output, err := DeflateDeCompress(input)
 	if err != nil {
-		panic(err)
+		if !IsEOF(err) {
+			panic(err)
+		}
 	}
 	return output
 }
@@ -127,7 +132,9 @@ func DeflateDeCompress(input []byte) ([]byte, error) {
 func MustGzipCompress(input []byte) []byte {
 	output, err := GzipCompress(input)
 	if err != nil {
-		panic(err)
+		if !IsEOF(err) {
+			panic(err)
+		}
 	}
 	return output
 }
@@ -151,7 +158,9 @@ func GzipCompress(data []byte) ([]byte, error) {
 func MustGzipDecompress(input []byte) []byte {
 	output, err := GzipDecompress(input)
 	if err != nil {
-		panic(err)
+		if !IsEOF(err) {
+			panic(err)
+		}
 	}
 	return output
 }
@@ -171,4 +180,11 @@ func GzipDecompress(data []byte) ([]byte, error) {
 	}
 
 	return result, nil
+}
+
+func IsEOF(err error) bool {
+	if strings.Contains(err.Error(), "EOF") {
+		return true
+	}
+	return false
 }
