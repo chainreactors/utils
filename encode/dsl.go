@@ -24,9 +24,9 @@ func DSLParser(s string) ([]byte, bool) {
 	case "b64en":
 		bs = []byte(Base64Encode([]byte(content)))
 	case "unhex":
-		bs = UnHexlify(content)
+		bs = HexDecode(content)
 	case "hex":
-		bs = []byte(Hexlify([]byte(content)))
+		bs = []byte(HexEncode([]byte(content)))
 	case "md5":
 		bs = []byte(Md5Hash([]byte(content)))
 	default:

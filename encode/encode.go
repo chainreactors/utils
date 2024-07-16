@@ -2,12 +2,15 @@ package encode
 
 import (
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"github.com/go-dedup/simhash"
 	"github.com/twmb/murmur3"
+	"io/ioutil"
 	"strconv"
 )
 
@@ -23,7 +26,19 @@ func Base64Encode(b []byte) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-func UnHexlify(s string) []byte {
+func XorEncode(bs []byte, keys []byte, cursor int) []byte {
+	if len(keys) == 0 {
+		return bs
+	}
+
+	newbs := make([]byte, len(bs))
+	for i, b := range bs {
+		newbs[i] = b ^ keys[(i+cursor)%len(keys)]
+	}
+	return newbs
+}
+
+func HexDecode(s string) []byte {
 	b, err := hex.DecodeString(s)
 	if err != nil {
 		panic(err)
@@ -31,7 +46,7 @@ func UnHexlify(s string) []byte {
 	return b
 }
 
-func Hexlify(b []byte) string {
+func HexEncode(b []byte) string {
 	return hex.EncodeToString(b)
 }
 
@@ -72,4 +87,88 @@ func SimhashCompare(s, other string) uint8 {
 func parseHex(s string) uint64 {
 	i, _ := strconv.ParseUint(s, 16, 64)
 	return i
+}
+
+func MustDeflateCompress(input []byte) []byte {
+	output, err := DeflateCompress(input)
+	if err != nil {
+		panic(err)
+	}
+	return output
+}
+
+func DeflateCompress(input []byte) ([]byte, error) {
+	var bf = bytes.NewBuffer([]byte{})
+	var flater, _ = flate.NewWriter(bf, flate.BestCompression)
+	defer flater.Close()
+	if _, err := flater.Write(input); err != nil {
+		return []byte{}, err
+	}
+	if err := flater.Flush(); err != nil {
+		return []byte{}, err
+	}
+	return bf.Bytes(), nil
+}
+
+func MustDeflateDeCompress(input []byte) []byte {
+	output, err := DeflateDeCompress(input)
+	if err != nil {
+		panic(err)
+	}
+	return output
+}
+
+func DeflateDeCompress(input []byte) ([]byte, error) {
+	rdata := bytes.NewReader(input)
+	r := flate.NewReader(rdata)
+	return ioutil.ReadAll(r)
+}
+
+func MustGzipCompress(input []byte) []byte {
+	output, err := GzipCompress(input)
+	if err != nil {
+		panic(err)
+	}
+	return output
+}
+
+func GzipCompress(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buf)
+	_, err := gzipWriter.Write(data)
+	if err != nil {
+		return nil, err
+	}
+
+	err = gzipWriter.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func MustGzipDecompress(input []byte) []byte {
+	output, err := GzipDecompress(input)
+	if err != nil {
+		panic(err)
+	}
+	return output
+}
+
+// GzipDecompress 解压缩输入的[]byte数据并返回解压缩后的[]byte数据
+func GzipDecompress(data []byte) ([]byte, error) {
+	buf := bytes.NewReader(data)
+	gzipReader, err := gzip.NewReader(buf)
+	if err != nil {
+		return nil, err
+	}
+	defer gzipReader.Close()
+
+	result, err := ioutil.ReadAll(gzipReader)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
