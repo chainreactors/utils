@@ -52,8 +52,7 @@ func SplitHttpRaw(content []byte) (body, header []byte, ok bool) {
 
 func ReadRaw(resp *http.Response) []byte {
 	var raw bytes.Buffer
-	raw.WriteString(resp.Proto + " " + resp.Status + "\r\n")
-	raw.Write(ReadHeader(resp))
+	raw.Write(ReadRawHeader(resp))
 	raw.WriteString("\r\n")
 	raw.Write(ReadBody(resp))
 	return raw.Bytes()
@@ -61,8 +60,7 @@ func ReadRaw(resp *http.Response) []byte {
 
 func ReadRawWithSize(resp *http.Response, size int64) []byte {
 	var raw bytes.Buffer
-	raw.WriteString(resp.Proto + " " + resp.Status + "\r\n")
-	raw.Write(ReadHeader(resp))
+	raw.Write(ReadRawHeader(resp))
 	raw.WriteString("\r\n")
 	raw.Write(ReadBodyWithSize(resp, size))
 	return raw.Bytes()
@@ -94,6 +92,13 @@ func ReadHeader(resp *http.Response) []byte {
 		}
 	}
 	return header.Bytes()
+}
+
+func ReadRawHeader(resp *http.Response) []byte {
+	var raw bytes.Buffer
+	raw.WriteString(resp.Proto + " " + resp.Status + "\r\n")
+	raw.Write(ReadHeader(resp))
+	return raw.Bytes()
 }
 
 func ReadCookie(resp *http.Response) map[string]string {
