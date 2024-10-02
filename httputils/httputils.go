@@ -32,6 +32,9 @@ func GetRandomUA() string {
 }
 
 func NewResponseWithRaw(raw []byte) *http.Response {
+	if bytes.HasPrefix(raw, []byte("http/")) {
+		raw = append([]byte("HTTP/"), raw[5:]...)
+	}
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), nil)
 	if err != nil {
 		return nil
