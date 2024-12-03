@@ -90,8 +90,8 @@ func ReadBody(resp *http.Response) []byte {
 func ReadHeader(resp *http.Response) []byte {
 	var header bytes.Buffer
 	for k, v := range resp.Header {
-		if len(v) > 0 {
-			header.WriteString(k + ": " + v[0] + "\r\n")
+		for _, i := range v {
+			header.WriteString(k + ": " + i + "\r\n")
 		}
 	}
 	return header.Bytes()
