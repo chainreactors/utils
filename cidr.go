@@ -197,6 +197,11 @@ func (c *CIDR) ContainsCIDR(cidr *CIDR) bool {
 	return c.Net().Contains(cidr.IP.IP)
 }
 
+func (c *CIDR) ContainsString(s string) bool {
+	cidr := ParseCIDR(s)
+	return c.ContainsCIDR(cidr)
+}
+
 func (c *CIDR) ContainsIP(ip *IP) bool {
 	return c.Net().Contains(ip.IP)
 }
@@ -246,6 +251,43 @@ func (cs CIDRs) Strings() []string {
 		s[i] = cidr.String()
 	}
 	return s
+}
+
+func (cs CIDRs) ContainsCIDR(cidr *CIDR) bool {
+	for _, c := range cs {
+		if c.ContainsCIDR(cidr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (cs CIDRs) ContainsCIDRs(cidrs CIDRs) bool {
+	for _, c := range cidrs {
+		if !cs.ContainsCIDR(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func (cs CIDRs) ContainsIP(ip *IP) bool {
+	for _, c := range cs {
+		if c.ContainsIP(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func (cs *CIDRs) ContainsString(s string) bool {
+	cidr := ParseCIDR(s)
+	for _, c := range *cs {
+		if c.ContainsCIDR(cidr) {
+			return true
+		}
+	}
+	return false
 }
 
 func (cs CIDRs) Coalesce() CIDRs {
