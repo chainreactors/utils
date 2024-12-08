@@ -69,13 +69,11 @@ func AsciiEncode(s string) string {
 func UTF8ConvertString(src string) string {
 	var dst strings.Builder
 	for i, r := range src {
-		var v string
 		if r == utf8.RuneError {
 			dst.WriteByte(src[i]) // 直接写入字节
 		} else {
 			dst.WriteRune(r) // 写入单个 Unicode 字符
 		}
-		dst.WriteString(v)
 	}
 	return dst.String()
 }
