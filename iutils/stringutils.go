@@ -67,17 +67,17 @@ func AsciiEncode(s string) string {
 
 // ref: https://www.anquanke.com/post/id/251097
 func UTF8ConvertString(src string) string {
-	var dst string
+	var dst strings.Builder
 	for i, r := range src {
 		var v string
 		if r == utf8.RuneError {
-			v = string(src[i])
+			dst.WriteByte(src[i]) // 直接写入字节
 		} else {
-			v = string(r)
+			dst.WriteRune(r) // 写入单个 Unicode 字符
 		}
-		dst += v
+		dst.WriteString(v)
 	}
-	return dst
+	return dst.String()
 }
 
 func UTF8ConvertBytes(src []byte) []byte {
