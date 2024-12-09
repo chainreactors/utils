@@ -3,10 +3,14 @@ package httputils
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"github.com/chainreactors/utils/iutils"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/textproto"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -41,6 +45,87 @@ func NewResponseWithRaw(raw []byte) *http.Response {
 	}
 
 	return resp
+}
+
+func badStringError(what, val string) error { return fmt.Errorf("%s %q", what, val) }
+
+func ReadResponse(r *bufio.Reader) (*http.Response, error) {
+	tp := textproto.NewReader(r)
+	resp := &http.Response{}
+
+	// Parse the first line of the response.
+	line, err := tp.ReadLine()
+	if err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+		return nil, err
+	}
+	proto, status, ok := strings.Cut(line, " ")
+	if !ok {
+		return nil, badStringError("malformed HTTP response", line)
+	}
+	resp.Proto = proto
+	resp.Status = strings.TrimLeft(status, " ")
+
+	statusCode, _, _ := strings.Cut(resp.Status, " ")
+	if len(statusCode) != 3 {
+		return nil, badStringError("malformed HTTP status code", statusCode)
+	}
+	resp.StatusCode, err = strconv.Atoi(statusCode)
+	if err != nil || resp.StatusCode < 0 {
+		return nil, badStringError("malformed HTTP status code", statusCode)
+	}
+	if resp.ProtoMajor, resp.ProtoMinor, ok = http.ParseHTTPVersion(resp.Proto); !ok {
+		return nil, badStringError("malformed HTTP version", resp.Proto)
+	}
+
+	// Parse the response headers.
+	mimeHeader, err := tp.ReadMIMEHeader()
+	if err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+		return nil, err
+	}
+	resp.Header = http.Header(mimeHeader)
+	resp.Body = &WrapReader{Reader: r}
+	return resp, nil
+}
+
+type WrapReader struct {
+	io.Reader
+}
+
+func (w *WrapReader) Close() error {
+	return nil
+}
+
+func ParseHTTPVersion(vers string) (major, minor int, ok bool) {
+	switch strings.ToLower(vers) {
+	case "http/1.1":
+		return 1, 1, true
+	case "http/1.0":
+		return 1, 0, true
+	}
+	if !strings.HasPrefix(vers, "HTTP/") {
+		return 0, 0, false
+	}
+	if len(vers) != len("HTTP/X.Y") {
+		return 0, 0, false
+	}
+	if vers[6] != '.' {
+		return 0, 0, false
+	}
+	maj, err := strconv.ParseUint(vers[5:6], 10, 0)
+	if err != nil {
+		return 0, 0, false
+	}
+	min, err := strconv.ParseUint(vers[7:8], 10, 0)
+	if err != nil {
+		return 0, 0, false
+	}
+	return int(maj), int(min), true
 }
 
 func SplitHttpRaw(content []byte) (body, header []byte, ok bool) {
