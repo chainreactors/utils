@@ -48,7 +48,6 @@ func NewResponseWithRaw(raw []byte) *http.Response {
 }
 
 func badStringError(what, val string) error { return fmt.Errorf("%s %q", what, val) }
-
 func ReadResponse(r *bufio.Reader) (*http.Response, error) {
 	tp := textproto.NewReader(r)
 	resp := &http.Response{}
@@ -61,21 +60,30 @@ func ReadResponse(r *bufio.Reader) (*http.Response, error) {
 		}
 		return nil, err
 	}
-	proto, status, ok := strings.Cut(line, " ")
-	if !ok {
+
+	spaceIndex := strings.Index(line, " ")
+	if spaceIndex == -1 {
 		return nil, badStringError("malformed HTTP response", line)
 	}
-	resp.Proto = proto
-	resp.Status = strings.TrimLeft(status, " ")
+	proto := line[:spaceIndex]
+	status := strings.TrimLeft(line[spaceIndex+1:], " ")
 
-	statusCode, _, _ := strings.Cut(resp.Status, " ")
-	if len(statusCode) != 3 {
-		return nil, badStringError("malformed HTTP status code", statusCode)
+	resp.Proto = proto
+	resp.Status = status
+
+	spaceIndex = strings.Index(status, " ")
+	if spaceIndex != -1 {
+		status = status[:spaceIndex]
 	}
-	resp.StatusCode, err = strconv.Atoi(statusCode)
+	if len(status) != 3 {
+		return nil, badStringError("malformed HTTP status code", status)
+	}
+	resp.StatusCode, err = strconv.Atoi(status)
 	if err != nil || resp.StatusCode < 0 {
-		return nil, badStringError("malformed HTTP status code", statusCode)
+		return nil, badStringError("malformed HTTP status code", status)
 	}
+
+	var ok bool
 	if resp.ProtoMajor, resp.ProtoMinor, ok = http.ParseHTTPVersion(resp.Proto); !ok {
 		return nil, badStringError("malformed HTTP version", resp.Proto)
 	}
