@@ -56,16 +56,17 @@ func NewFileWithOptions(filename string, opts *FileOptions) (*File, error) {
 	}
 
 	file := &File{
-		filename:    filename,
-		mode:        opts.Mode,
-		encode:      opts.Encode,
-		lazy:        opts.Lazy,
-		buf:         bytes.NewBuffer([]byte{}),
-		bufferSize:  opts.BufferSize,
-		initialized: false,
-		closed:      false,
-		Handler:     opts.Handler,
-		Encoder:     opts.Encoder,
+		filename:     filename,
+		mode:         opts.Mode,
+		encode:       opts.Encode,
+		lazy:         opts.Lazy,
+		buf:          bytes.NewBuffer([]byte{}),
+		bufferSize:   opts.BufferSize,
+		initialized:  false,
+		closed:       false,
+		Handler:      opts.Handler,
+		Encoder:      opts.Encoder,
+		ClosedAppend: opts.ClosedAppend,
 	}
 
 	if !opts.Lazy {
@@ -79,21 +80,23 @@ func NewFileWithOptions(filename string, opts *FileOptions) (*File, error) {
 
 // FileOptions 文件选项配置
 type FileOptions struct {
-	Mode       int // 使用 os.O_* 标志位
-	Encode     bool
-	Lazy       bool
-	BufferSize int
-	Handler    func(string) string
-	Encoder    func([]byte) []byte
+	Mode         int // 使用 os.O_* 标志位
+	Encode       bool
+	Lazy         bool
+	BufferSize   int
+	Handler      func(string) string
+	Encoder      func([]byte) []byte
+	ClosedAppend string
 }
 
 // DefaultFileOptions 返回默认的文件选项
 func DefaultFileOptions() *FileOptions {
 	return &FileOptions{
-		Mode:       ModeAppend,
-		Encode:     false,
-		Lazy:       false,
-		BufferSize: 4096,
+		Mode:         ModeAppend,
+		Encode:       false,
+		Lazy:         false,
+		BufferSize:   4096,
+		ClosedAppend: "",
 		Handler: func(s string) string {
 			return s
 		},
@@ -116,8 +119,9 @@ type File struct {
 	buf         *bytes.Buffer
 	mutex       sync.RWMutex
 
-	Handler func(string) string
-	Encoder func([]byte) []byte
+	Handler      func(string) string
+	Encoder      func([]byte) []byte
+	ClosedAppend string
 }
 
 // init 初始化文件写入器（内部方法）
@@ -141,6 +145,7 @@ func (f *File) init() error {
 }
 
 // Write 实现 io.Writer 接口，线程安全地写入数据
+// 在最底层实现 Encoder 功能
 func (f *File) Write(p []byte) (n int, err error) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
@@ -155,7 +160,15 @@ func (f *File) Write(p []byte) (n int, err error) {
 		}
 	}
 
-	n, err = f.buf.Write(p)
+	// 在最底层应用 Encoder
+	var data []byte
+	if f.encode && f.Encoder != nil {
+		data = f.Encoder(p)
+	} else {
+		data = p
+	}
+
+	n, err = f.buf.Write(data)
 	if err != nil {
 		return n, err
 	}
@@ -166,19 +179,15 @@ func (f *File) Write(p []byte) (n int, err error) {
 		}
 	}
 
-	return len(p), nil
+	return len(p), nil // 返回原始数据长度
 }
 
 // WriteString 线程安全地写入字符串
 func (f *File) WriteString(s string) (n int, err error) {
+	if f.Handler != nil {
+		s = f.Handler(s)
+	}
 	return f.Write([]byte(s))
-}
-
-// SafeWrite 安全写入字符串（处理后的字符串）
-func (f *File) SafeWrite(s string) error {
-	processed := f.Handler(s)
-	_, err := f.WriteString(processed)
-	return err
 }
 
 // WriteLine 写入一行数据（自动添加换行符）
@@ -195,7 +204,7 @@ func (f *File) WriteBytes(bs []byte) error {
 
 // SyncWrite 同步写入（写入后立即刷新到磁盘）
 func (f *File) SyncWrite(s string) error {
-	if err := f.SafeWrite(s); err != nil {
+	if _, err := f.WriteString(s); err != nil {
 		return err
 	}
 	return f.Sync()
@@ -215,14 +224,8 @@ func (f *File) flush() error {
 		return nil
 	}
 
-	var data []byte
-	if f.encode {
-		data = f.Encoder(f.buf.Bytes())
-	} else {
-		data = f.buf.Bytes()
-	}
-
-	if _, err := f.fileWriter.Write(data); err != nil {
+	// 直接写入缓冲区数据（编码已在 Write 方法中处理）
+	if _, err := f.fileWriter.Write(f.buf.Bytes()); err != nil {
 		return fmt.Errorf("failed to write to file %s: %w", f.filename, err)
 	}
 
@@ -236,12 +239,20 @@ func (f *File) flush() error {
 }
 
 // Close 关闭文件写入器
+// ClosedAppend 在此方法中生效
 func (f *File) Close() error {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
 	if f.closed {
 		return nil
+	}
+
+	// 在关闭前写入 ClosedAppend 内容
+	if f.ClosedAppend != "" {
+		if _, err := f.buf.WriteString(f.ClosedAppend); err != nil {
+			return fmt.Errorf("failed to write ClosedAppend: %w", err)
+		}
 	}
 
 	// 刷新剩余数据
@@ -323,6 +334,20 @@ func (f *File) EnableEncoding(enable bool) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	f.encode = enable
+}
+
+// SetClosedAppend 设置关闭时追加的内容
+func (f *File) SetClosedAppend(content string) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.ClosedAppend = content
+}
+
+// GetClosedAppend 获取关闭时追加的内容
+func (f *File) GetClosedAppend() string {
+	f.mutex.RLock()
+	defer f.mutex.RUnlock()
+	return f.ClosedAppend
 }
 
 // GetModeString 获取模式的字符串描述
