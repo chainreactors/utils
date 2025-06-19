@@ -103,8 +103,8 @@ func (preset PortPreset) ParsePortSlice(ports []string) []string {
 			continue
 		}
 
-		if len(portname) > 1 && portname[0] == '-' {
-			// 处理带负号的值，加入到排除列表中
+		if len(portname) > 1 && (portname[0] == '!') {
+			// 处理带负号或感叹号的值，加入到排除列表中
 			excludePorts = append(excludePorts, preset.ChoicePort(portname[1:])...)
 		} else {
 			// 处理普通值，加入到端口列表中
