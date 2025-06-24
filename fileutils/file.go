@@ -55,25 +55,14 @@ func NewFileWithOptions(filename string, opts *FileOptions) (*File, error) {
 		opts = DefaultFileOptions()
 	}
 
-	file := &File{
-		filename:     filename,
-		mode:         opts.Mode,
-		encode:       opts.Encode,
-		lazy:         opts.Lazy,
-		buf:          bytes.NewBuffer([]byte{}),
-		bufferSize:   opts.BufferSize,
-		initialized:  false,
-		closed:       false,
-		Handler:      opts.Handler,
-		Encoder:      opts.Encoder,
-		ClosedAppend: opts.ClosedAppend,
+	file, err := NewFile(filename, opts.Mode, opts.Encode, opts.Lazy)
+	if err != nil {
+		return nil, err
 	}
-
-	if !opts.Lazy {
-		if err := file.init(); err != nil {
-			return nil, fmt.Errorf("failed to initialize file %s: %w", filename, err)
-		}
-	}
+	file.bufferSize = opts.BufferSize
+	file.Handler = opts.Handler
+	file.ClosedAppend = opts.ClosedAppend
+	file.Encoder = opts.Encoder
 
 	return file, nil
 }
@@ -160,15 +149,7 @@ func (f *File) Write(p []byte) (n int, err error) {
 		}
 	}
 
-	// 在最底层应用 Encoder
-	var data []byte
-	if f.encode && f.Encoder != nil {
-		data = f.Encoder(p)
-	} else {
-		data = p
-	}
-
-	n, err = f.buf.Write(data)
+	n, err = f.buf.Write(p)
 	if err != nil {
 		return n, err
 	}
@@ -224,8 +205,15 @@ func (f *File) flush() error {
 		return nil
 	}
 
+	var data []byte
+	if f.encode && f.Encoder != nil {
+		data = f.Encoder(f.buf.Bytes())
+	} else {
+		data = f.buf.Bytes()
+	}
+
 	// 直接写入缓冲区数据（编码已在 Write 方法中处理）
-	if _, err := f.fileWriter.Write(f.buf.Bytes()); err != nil {
+	if _, err := f.fileWriter.Write(data); err != nil {
 		return fmt.Errorf("failed to write to file %s: %w", f.filename, err)
 	}
 
