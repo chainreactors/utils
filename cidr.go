@@ -95,7 +95,18 @@ type CIDR struct {
 }
 
 func (c *CIDR) Len() int {
-	return c.IP.Len()
+	if c == nil || c.IP == nil {
+		return 0
+	}
+	var totalBits uint
+	if c.Ver == 4 {
+		totalBits = 32
+	} else if c.Ver == 6 {
+		totalBits = 128
+	} else {
+		return 0 // 无效的 IP 版本
+	}
+	return 1 << (totalBits - uint(c.Mask))
 }
 
 func (c *CIDR) String() string {
