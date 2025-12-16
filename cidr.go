@@ -2,10 +2,11 @@ package utils
 
 import (
 	"fmt"
-	"github.com/chainreactors/utils/iputils"
 	"net"
 	"sort"
 	"strings"
+
+	"github.com/chainreactors/utils/iputils"
 )
 
 func SplitCIDR(cidr string) (string, int) {
@@ -122,8 +123,8 @@ func (c *CIDR) FirstIP() *IP {
 }
 
 func (c *CIDR) LastIP() *IP {
-	ip := make(net.IP, c.Len())
-	for i := 0; i < c.Len(); i++ {
+	ip := make(net.IP, c.IP.Len())
+	for i := 0; i < c.IP.Len(); i++ {
 		ip[i] = c.IP.IP[i] | ^c.maskIP.IP[i]
 	}
 	return &IP{IP: ip, Ver: c.Ver}
