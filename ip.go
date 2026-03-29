@@ -134,7 +134,7 @@ func NewIP(ip net.IP) *IP {
 
 // ParseHostToIP parse host to ip and validate ip format
 func ParseHostToIP(target string) (*IP, error) {
-	iprecords, err := net.LookupIP(ParseHost(target))
+	iprecords, err := resolveHostIP(ParseHost(target))
 	if err != nil {
 		return nil, fmt.Errorf("Unable to resolve domain name:" + target + ". SKIPPED!")
 	}
