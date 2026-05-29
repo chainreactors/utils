@@ -74,17 +74,7 @@ func NewTransport(cfg ClientConfig) *http.Transport {
 	if tlsConfig == nil {
 		tlsConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
 	}
-	tr := &http.Transport{
-		TLSClientConfig:     tlsConfig,
-		MaxIdleConns:        cfg.MaxIdleConns,
-		MaxIdleConnsPerHost: cfg.MaxIdleConnsPerHost,
-		IdleConnTimeout:     cfg.IdleConnTimeout,
-		DisableKeepAlives:   cfg.DisableKeepAlives,
-	}
-	if cfg.DialContext != nil {
-		tr.DialContext = cfg.DialContext
-	}
-	return tr
+	return newTransport(cfg, tlsConfig)
 }
 
 // NewHTTPClient 依据 cfg 构造一个全新的 *http.Client（含全新 transport）。
@@ -109,7 +99,7 @@ func NewHTTPClientWithTransport(tr http.RoundTripper, timeout time.Duration, fol
 func redirectFunc(follow bool, max int) func(req *http.Request, via []*http.Request) error {
 	if !follow {
 		return func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
+			return errUseLastResponse()
 		}
 	}
 	if max <= 0 {
@@ -117,7 +107,7 @@ func redirectFunc(follow bool, max int) func(req *http.Request, via []*http.Requ
 	}
 	return func(req *http.Request, via []*http.Request) error {
 		if len(via) >= max {
-			return http.ErrUseLastResponse
+			return errUseLastResponse()
 		}
 		return nil
 	}
