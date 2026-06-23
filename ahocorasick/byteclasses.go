@@ -18,25 +18,33 @@ func NewByteClasses(patterns [][]byte) *ByteClasses {
 
 	// Track which bytes appear in patterns
 	used := [256]bool{}
+	usedCount := 0
 	for _, p := range patterns {
 		for _, b := range p {
-			used[b] = true
+			if !used[b] {
+				used[b] = true
+				usedCount++
+			}
 		}
+	}
+
+	if usedCount == 256 {
+		return NewSingletonByteClasses()
 	}
 
 	// Assign classes:
 	// - Class 0: unused bytes (all transition to dead state)
 	// - Class 1+: used bytes get individual classes
-	class := byte(1)
+	class := 1
 	for i := 0; i < 256; i++ {
 		if used[i] {
-			bc.classes[i] = class
+			bc.classes[i] = byte(class)
 			class++
 		}
 		// unused bytes stay at class 0
 	}
 
-	bc.numClasses = int(class)
+	bc.numClasses = class
 	return bc
 }
 

@@ -76,33 +76,63 @@ func buildDFA(nfa *OptimizedNFA, patterns [][]byte, matchKind MatchKind) *DFA {
 		}
 	}
 
-	isMatch := make([]bool, numStates)
-	for si := 0; si < numStates; si++ {
-		isMatch[si] = len(nfa.states[si].matches) > 0
-	}
-
 	tableSize := numStates * stride
 	d.trans = make([]uint32, tableSize)
 
-	for si := 0; si < numStates; si++ {
-		rowOffset := si << stride2
-		for class := 0; class < alphabetLen; class++ {
-			next := resolveTransition(nfa, StateID(si), class)
-			premultiplied := uint32(next) << stride2
-			if isMatch[next] {
-				premultiplied |= matchFlag
-			}
-			d.trans[rowOffset+class] = premultiplied
+	encodeTransition := func(next StateID) uint32 {
+		premultiplied := uint32(next) << stride2
+		if len(nfa.states[next].matches) > 0 {
+			premultiplied |= matchFlag
+		}
+		return premultiplied
+	}
+
+	root := nfa.startState
+	rootOffset := int(root) * stride
+	rootTransition := encodeTransition(root)
+	for class := 0; class < alphabetLen; class++ {
+		d.trans[rootOffset+class] = rootTransition
+	}
+
+	queue := make([]StateID, 0, numStates)
+	for _, edge := range nfa.states[root].trans {
+		d.trans[rootOffset+int(edge.class)] = encodeTransition(edge.next)
+		queue = append(queue, edge.next)
+	}
+
+	for len(queue) > 0 {
+		state := queue[0]
+		queue = queue[1:]
+
+		rowOffset := int(state) * stride
+		failOffset := int(nfa.states[state].fail) * stride
+		copy(d.trans[rowOffset:rowOffset+alphabetLen], d.trans[failOffset:failOffset+alphabetLen])
+
+		for _, edge := range nfa.states[state].trans {
+			d.trans[rowOffset+int(edge.class)] = encodeTransition(edge.next)
+			queue = append(queue, edge.next)
 		}
 	}
 
 	var totalMatches int
+	var overflowStates int
 	for si := 0; si < numStates; si++ {
-		totalMatches += len(nfa.states[si].matches)
+		count := len(nfa.states[si].matches)
+		if count == 0 {
+			continue
+		}
+		if totalMatches <= 0xFFFF && count <= 0xFFFF {
+			totalMatches += count
+		} else {
+			overflowStates++
+		}
 	}
 
 	d.matchData = make([]PatternID, 0, totalMatches)
 	d.matchIndex = make([]uint32, numStates)
+	if overflowStates > 0 {
+		d.matchOverflow = make(map[uint32][]PatternID, overflowStates)
+	}
 
 	for si := 0; si < numStates; si++ {
 		matches := nfa.states[si].matches
@@ -112,32 +142,17 @@ func buildDFA(nfa *OptimizedNFA, patterns [][]byte, matchKind MatchKind) *DFA {
 
 		offset := len(d.matchData)
 		count := len(matches)
-		d.matchData = append(d.matchData, matches...)
 
 		if offset <= 0xFFFF && count <= 0xFFFF {
+			d.matchData = append(d.matchData, matches...)
 			d.matchIndex[si] = uint32(offset<<16) | uint32(count)
 		} else {
 			d.matchIndex[si] = 0xFFFFFFFF
-			if d.matchOverflow == nil {
-				d.matchOverflow = make(map[uint32][]PatternID)
-			}
 			d.matchOverflow[uint32(si)] = matches
 		}
 	}
 
 	return d
-}
-
-func resolveTransition(nfa *OptimizedNFA, s StateID, class int) StateID {
-	for {
-		if next := nfa.states[s].trans[class]; next != 0 {
-			return next
-		}
-		if s == nfa.startState {
-			return nfa.startState
-		}
-		s = nfa.states[s].fail
-	}
 }
 
 func (d *DFA) getMatches(sid uint32) []PatternID {

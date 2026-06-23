@@ -18,23 +18,29 @@ func (idx *KeywordIndex) MatchSources(content []byte) map[int]bool {
 		return nil
 	}
 	result := make(map[int]bool)
+	return idx.MatchSourcesInto(content, result)
+}
+
+// MatchSourcesInto scans content and adds matching source IDs to dst.
+func (idx *KeywordIndex) MatchSourcesInto(content []byte, dst map[int]bool) map[int]bool {
+	if idx == nil {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[int]bool)
+	}
 	if idx.ac != nil && len(content) > 0 {
-		var matches []Match
-		if idx.overlapping {
-			matches = idx.ac.FindAllOverlapping(content)
-		} else {
-			matches = idx.ac.FindAll(content, -1)
-		}
-		for _, m := range matches {
+		idx.ac.forEachMatch(content, idx.overlapping, -1, func(m Match) bool {
 			for _, sid := range idx.keywordToSources[m.PatternID] {
-				result[sid] = true
+				dst[sid] = true
 			}
-		}
+			return true
+		})
 	}
 	for _, sid := range idx.fallbackSources {
-		result[sid] = true
+		dst[sid] = true
 	}
-	return result
+	return dst
 }
 
 // KeywordIndexBuilder collects keywords and builds a KeywordIndex.
@@ -118,14 +124,10 @@ type DualKeywordIndex struct {
 func (d *DualKeywordIndex) MatchSources(header, body []byte) map[int]bool {
 	result := make(map[int]bool)
 	if d.Header != nil && d.Header.ac != nil && len(header) > 0 {
-		for sid := range d.Header.MatchSources(header) {
-			result[sid] = true
-		}
+		d.Header.MatchSourcesInto(header, result)
 	}
 	if d.Body != nil && d.Body.ac != nil && len(body) > 0 {
-		for sid := range d.Body.MatchSources(body) {
-			result[sid] = true
-		}
+		d.Body.MatchSourcesInto(body, result)
 	}
 	for _, sid := range d.fallbacks {
 		result[sid] = true

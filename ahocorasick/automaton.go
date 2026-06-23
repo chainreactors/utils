@@ -12,8 +12,17 @@ type Automaton struct {
 // Find returns the first match in haystack starting at or after position start.
 // Returns nil if no match is found.
 func (a *Automaton) Find(haystack []byte, start int) *Match {
-	if start >= len(haystack) {
+	m, ok := a.FindMatch(haystack, start)
+	if !ok {
 		return nil
+	}
+	return &m
+}
+
+// FindMatch returns the first match in haystack starting at or after position start.
+func (a *Automaton) FindMatch(haystack []byte, start int) (Match, bool) {
+	if start >= len(haystack) {
+		return Match{}, false
 	}
 
 	d := a.dfa
@@ -23,7 +32,7 @@ func (a *Automaton) Find(haystack []byte, start int) *Match {
 	if len(sb) > 0 && remaining >= 128 {
 		skip := findEarliestStartByte(haystack[start:], sb)
 		if skip < 0 {
-			return nil
+			return Match{}, false
 		}
 		start += skip
 	}
@@ -35,7 +44,8 @@ func (a *Automaton) Find(haystack []byte, start int) *Match {
 
 	_ = trans[len(trans)-1]
 
-	var bestMatch *Match
+	var bestMatch Match
+	found := false
 
 	for i := start; i < len(haystack); i++ {
 		raw := trans[int(sid)+int(classes[haystack[i]])]
@@ -55,29 +65,39 @@ func (a *Automaton) Find(haystack []byte, start int) *Match {
 		matchEnd := i + 1
 		matchStart := matchEnd - patternLens[patternID]
 
-		m := &Match{
+		m := Match{
 			PatternID: int(patternID),
 			Start:     matchStart,
 			End:       matchEnd,
 		}
 
 		if a.matchKind == LeftmostFirst {
-			return m
+			return m, true
 		}
 
-		if bestMatch == nil || m.Len() > bestMatch.Len() {
+		if !found || m.Len() > bestMatch.Len() {
 			bestMatch = m
+			found = true
 		}
 	}
 
-	return bestMatch
+	return bestMatch, found
 }
 
 // FindAt returns the first match starting exactly at position start.
 // Returns nil if no match starts at the given position.
 func (a *Automaton) FindAt(haystack []byte, start int) *Match {
-	if start >= len(haystack) {
+	m, ok := a.FindAtMatch(haystack, start)
+	if !ok {
 		return nil
+	}
+	return &m
+}
+
+// FindAtMatch returns the first match starting exactly at position start.
+func (a *Automaton) FindAtMatch(haystack []byte, start int) (Match, bool) {
+	if start >= len(haystack) {
+		return Match{}, false
 	}
 
 	d := a.dfa
@@ -89,7 +109,8 @@ func (a *Automaton) FindAt(haystack []byte, start int) *Match {
 
 	_ = trans[len(trans)-1]
 
-	var bestMatch *Match
+	var bestMatch Match
+	found := false
 
 	for i := start; i < len(haystack); i++ {
 		prevSid := sid
@@ -114,23 +135,24 @@ func (a *Automaton) FindAt(haystack []byte, start int) *Match {
 				continue
 			}
 
-			m := &Match{
+			m := Match{
 				PatternID: int(patternID),
 				Start:     matchStart,
 				End:       matchEnd,
 			}
 
 			if a.matchKind == LeftmostFirst {
-				return m
+				return m, true
 			}
 
-			if bestMatch == nil || m.Len() > bestMatch.Len() {
+			if !found || m.Len() > bestMatch.Len() {
 				bestMatch = m
+				found = true
 			}
 		}
 	}
 
-	return bestMatch
+	return bestMatch, found
 }
 
 // IsMatch returns true if any pattern matches anywhere in the haystack.
@@ -193,6 +215,37 @@ func (a *Automaton) FindAll(haystack []byte, n int) []Match {
 		return nil
 	}
 
+	var matches []Match
+	a.forEachMatch(haystack, false, n, func(m Match) bool {
+		matches = append(matches, m)
+		return true
+	})
+	return matches
+}
+
+// FindAllOverlapping returns all overlapping matches in the haystack.
+func (a *Automaton) FindAllOverlapping(haystack []byte) []Match {
+	var matches []Match
+	a.forEachMatch(haystack, true, -1, func(m Match) bool {
+		matches = append(matches, m)
+		return true
+	})
+	return matches
+}
+
+func (a *Automaton) forEachMatch(haystack []byte, overlapping bool, n int, emit func(Match) bool) {
+	if overlapping {
+		a.forEachOverlappingMatch(haystack, n, emit)
+		return
+	}
+	a.forEachNonOverlappingMatch(haystack, n, emit)
+}
+
+func (a *Automaton) forEachNonOverlappingMatch(haystack []byte, n int, emit func(Match) bool) {
+	if len(haystack) == 0 {
+		return
+	}
+
 	d := a.dfa
 	trans := d.trans
 	classes := &d.byteClasses.classes
@@ -203,10 +256,10 @@ func (a *Automaton) FindAll(haystack []byte, n int) []Match {
 		_ = trans[len(trans)-1]
 	}
 
-	var matches []Match
+	emitted := 0
 
 	for i := 0; i < len(haystack); i++ {
-		if n >= 0 && len(matches) >= n {
+		if n >= 0 && emitted >= n {
 			break
 		}
 
@@ -228,25 +281,23 @@ func (a *Automaton) FindAll(haystack []byte, n int) []Match {
 		matchEnd := i + 1
 		matchStart := matchEnd - patLen
 
-		matches = append(matches, Match{
+		emitted++
+		if !emit(Match{
 			PatternID: int(patternID),
 			Start:     matchStart,
 			End:       matchEnd,
-		})
+		}) {
+			return
+		}
 
 		if matchEnd > i+1 {
 			i = matchEnd - 1
 		}
 		sid = 0
 	}
-
-	return matches
 }
 
-// FindAllOverlapping returns all overlapping matches in the haystack.
-func (a *Automaton) FindAllOverlapping(haystack []byte) []Match {
-	var matches []Match
-
+func (a *Automaton) forEachOverlappingMatch(haystack []byte, n int, emit func(Match) bool) {
 	d := a.dfa
 	trans := d.trans
 	classes := &d.byteClasses.classes
@@ -257,7 +308,12 @@ func (a *Automaton) FindAllOverlapping(haystack []byte) []Match {
 		_ = trans[len(trans)-1]
 	}
 
+	emitted := 0
 	for i, b := range haystack {
+		if n >= 0 && emitted >= n {
+			break
+		}
+
 		raw := trans[int(sid)+int(classes[b])]
 
 		if raw&matchFlag == 0 {
@@ -267,18 +323,22 @@ func (a *Automaton) FindAllOverlapping(haystack []byte) []Match {
 
 		sid = raw & matchMask
 		for _, patternID := range d.getMatches(sid) {
+			if n >= 0 && emitted >= n {
+				return
+			}
 			matchEnd := i + 1
 			matchStart := matchEnd - patternLens[patternID]
 
-			matches = append(matches, Match{
+			emitted++
+			if !emit(Match{
 				PatternID: int(patternID),
 				Start:     matchStart,
 				End:       matchEnd,
-			})
+			}) {
+				return
+			}
 		}
 	}
-
-	return matches
 }
 
 // Count returns the number of non-overlapping matches in the haystack.
@@ -287,8 +347,8 @@ func (a *Automaton) Count(haystack []byte) int {
 	pos := 0
 
 	for pos < len(haystack) {
-		m := a.Find(haystack, pos)
-		if m == nil {
+		m, ok := a.FindMatch(haystack, pos)
+		if !ok {
 			break
 		}
 		count++
