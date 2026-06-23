@@ -81,6 +81,39 @@ func TestKeywordIndex_NonOverlapping(t *testing.T) {
 	}
 }
 
+func TestKeywordIndex_MatchSourcesInto(t *testing.T) {
+	idx := NewKeywordIndexBuilder().
+		SetOverlapping(true).
+		AddKeyword("server: microsoft", 1).
+		AddKeyword("server: microsoft-iis", 2).
+		AddKeyword("nginx", 3).
+		AddKeyword("nginx", 4).
+		AddFallback(99).
+		Build()
+
+	content := []byte("server: microsoft-iis/10.0 nginx nginx")
+	result := idx.MatchSources(content)
+	for _, sid := range []int{1, 2, 3, 4, 99} {
+		if !result[sid] {
+			t.Fatalf("missing source %d: result=%v", sid, result)
+		}
+	}
+	if len(result) != 5 {
+		t.Fatalf("unexpected result: %v", result)
+	}
+
+	into := map[int]bool{7: true}
+	idx.MatchSourcesInto(content, into)
+	if !into[7] {
+		t.Fatalf("MatchSourcesInto should preserve existing entries: %v", into)
+	}
+	for sid := range result {
+		if !into[sid] {
+			t.Fatalf("MatchSourcesInto missing source %d: into=%v result=%v", sid, into, result)
+		}
+	}
+}
+
 func TestDualKeywordIndex_Basic(t *testing.T) {
 	idx := NewDualKeywordIndexBuilder().
 		AddBodyKeyword("wordpress", 1).
@@ -102,6 +135,42 @@ func TestDualKeywordIndex_Basic(t *testing.T) {
 	if !result[99] {
 		t.Error("expected fallback source 99")
 	}
+}
+
+func BenchmarkKeywordIndexMatchSources(b *testing.B) {
+	builder := NewKeywordIndexBuilder().SetOverlapping(true)
+	for i := 0; i < 256; i++ {
+		builder.AddKeyword("kw"+itoa(i), i)
+	}
+	idx := builder.Build()
+
+	content := make([]byte, 0, 4096)
+	for i := 0; i < 512; i++ {
+		content = append(content, "kw"...)
+		content = append(content, itoa(i%256)...)
+		content = append(content, ' ')
+	}
+
+	b.Run("stream", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if len(idx.MatchSources(content)) == 0 {
+				b.Fatal("expected matches")
+			}
+		}
+	})
+	b.Run("into_reuse", func(b *testing.B) {
+		dst := make(map[int]bool, 256)
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			for sid := range dst {
+				delete(dst, sid)
+			}
+			if len(idx.MatchSourcesInto(content, dst)) == 0 {
+				b.Fatal("expected matches")
+			}
+		}
+	})
 }
 
 func TestDualKeywordIndex_BodyOnly(t *testing.T) {
