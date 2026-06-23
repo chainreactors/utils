@@ -1,7 +1,8 @@
+//go:build !windows
+
 package pty
 
 import (
-	"io"
 	"os/exec"
 
 	gopty "github.com/aymanbagabas/go-pty"
@@ -73,22 +74,3 @@ func (p *ptyHandle) Resize(cols, rows int) error {
 	return p.pty.Resize(cols, rows)
 }
 
-// pumpOutput copies data from the PTY master into the OutputBuffer until EOF.
-// Closes the returned channel when pumping is done.
-func pumpOutput(r io.Reader, buf *OutputBuffer) <-chan struct{} {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		tmp := make([]byte, 4096)
-		for {
-			n, err := r.Read(tmp)
-			if n > 0 {
-				_, _ = buf.Write(tmp[:n])
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	return done
-}
