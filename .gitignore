@@ -12,6 +12,10 @@ gen
 *.exe
 *.exe~
 *.dll
+
+# winpty embedded binaries (required for old Windows PTY support)
+!pty/winpty_bin/winpty.dll
+!pty/winpty_bin/winpty-agent.exe
 *.so
 *.dylib
 *.tar.gz
