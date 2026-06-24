@@ -1,7 +1,6 @@
 package cert
 
 import (
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -11,14 +10,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/big"
-	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
+	ucert "github.com/chainreactors/utils/cert"
 	"github.com/golang/groupcache/lru"
 	"github.com/golang/groupcache/singleflight"
 	log "github.com/sirupsen/logrus"
@@ -38,24 +35,15 @@ type SelfSignCA struct {
 }
 
 func createCert() (*rsa.PrivateKey, *x509.Certificate, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, err
+	subject := &pkix.Name{
+		CommonName:   "mitmproxy",
+		Organization: []string{"mitmproxy"},
 	}
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano() / 100000),
-		Subject: pkix.Name{
-			CommonName:   "mitmproxy",
-			Organization: []string{"mitmproxy"},
-		},
-		NotBefore:             time.Now().Add(-time.Hour * 48),
-		NotAfter:              time.Now().Add(time.Hour * 24 * 365 * 3),
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-		SignatureAlgorithm:    x509.SHA256WithRSA,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		ExtKeyUsage: []x509.ExtKeyUsage{
+	certPEM, keyPEM, err := ucert.GenerateCACert(2048,
+		ucert.WithFullSubject(*subject),
+		ucert.WithValidityWindow(time.Now().Add(-48*time.Hour), 3*365*24*time.Hour),
+		ucert.WithKeyUsages(x509.KeyUsageCertSign|x509.KeyUsageCRLSign),
+		ucert.WithExtKeyUsages(
 			x509.ExtKeyUsageServerAuth,
 			x509.ExtKeyUsageClientAuth,
 			x509.ExtKeyUsageEmailProtection,
@@ -64,14 +52,17 @@ func createCert() (*rsa.PrivateKey, *x509.Certificate, error) {
 			x509.ExtKeyUsageMicrosoftCommercialCodeSigning,
 			x509.ExtKeyUsageMicrosoftServerGatedCrypto,
 			x509.ExtKeyUsageNetscapeServerGatedCrypto,
-		},
-	}
-
-	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+		),
+	)
 	if err != nil {
 		return nil, nil, err
 	}
-	cert, err := x509.ParseCertificate(certBytes)
+
+	cert, err := ucert.ParseCertificatePEM(certPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := ucert.ParseKeyPEM(keyPEM)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -199,23 +190,10 @@ func (ca *SelfSignCA) load() error {
 		return fmt.Errorf("no CERTIFICATE found in %v", caFile)
 	}
 
-	var privateKey *rsa.PrivateKey
-	key, err := x509.ParsePKCS8PrivateKey(keyDERBlock.Bytes)
+	keyPEM := pem.EncodeToMemory(keyDERBlock)
+	privateKey, err := ucert.ParseKeyPEM(keyPEM)
 	if err != nil {
-		if strings.Contains(err.Error(), "use ParsePKCS1PrivateKey instead") {
-			privateKey, err = x509.ParsePKCS1PrivateKey(keyDERBlock.Bytes)
-			if err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	} else {
-		if v, ok := key.(*rsa.PrivateKey); ok {
-			privateKey = v
-		} else {
-			return errors.New("found unknown rsa private key type in PKCS#8 wrapping")
-		}
+		return err
 	}
 	ca.PrivateKey = *privateKey
 
@@ -324,34 +302,27 @@ func (ca *SelfSignCA) GetCert(commonName string) (*tls.Certificate, error) {
 
 func (ca *SelfSignCA) DummyCert(commonName string) (*tls.Certificate, error) {
 	log.Debugf("ca DummyCert: %v", commonName)
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano() / 100000),
-		Subject: pkix.Name{
+
+	tmpl, err := ucert.NewTemplate(
+		ucert.WithFullSubject(pkix.Name{
 			CommonName:   commonName,
 			Organization: []string{"mitmproxy"},
-		},
-		NotBefore:          time.Now().Add(-time.Hour * 48),
-		NotAfter:           time.Now().Add(time.Hour * 24 * 365),
-		SignatureAlgorithm: x509.SHA256WithRSA,
-		ExtKeyUsage:        []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-	}
-
-	ip := net.ParseIP(commonName)
-	if ip != nil {
-		template.IPAddresses = []net.IP{ip}
-	} else {
-		template.DNSNames = []string{commonName}
-	}
-
-	certBytes, err := x509.CreateCertificate(rand.Reader, template, &ca.RootCert, &ca.PrivateKey.PublicKey, &ca.PrivateKey)
+		}),
+		ucert.WithValidityWindow(time.Now().Add(-48*time.Hour), 365*24*time.Hour),
+		ucert.WithExtKeyUsages(x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth),
+		ucert.WithAutoSAN(commonName),
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	cert := &tls.Certificate{
-		Certificate: [][]byte{certBytes},
-		PrivateKey:  &ca.PrivateKey,
+	derBytes, err := ucert.SignWith(tmpl, &ca.RootCert, &ca.PrivateKey, &ca.PrivateKey)
+	if err != nil {
+		return nil, err
 	}
 
-	return cert, nil
+	return &tls.Certificate{
+		Certificate: [][]byte{derBytes},
+		PrivateKey:  &ca.PrivateKey,
+	}, nil
 }
