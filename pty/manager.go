@@ -887,15 +887,17 @@ func (m *Manager) Wait(ctx context.Context, id string, timeout time.Duration) (I
 		defer timer.Stop()
 		timerC = timer.C
 	}
+	var ctxErr error
 	select {
 	case <-s.done:
 	case <-timerC:
 	case <-ctx.Done():
-		return s.Info, ctx.Err()
+		ctxErr = ctx.Err()
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return s.Info, nil
+	info := s.Info
+	m.mu.Unlock()
+	return info, ctxErr
 }
 
 // --- helpers ---
