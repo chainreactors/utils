@@ -13,7 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const peekTimeout = 500 * time.Millisecond
+const peekTimeout = 200 * time.Millisecond
 
 // wrap tcpListener for remote client
 type wrapListener struct {
@@ -314,12 +314,99 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 	transfer(log, conn, cconn)
 }
 
+// dispatchTunnel classifies the client data in a CONNECT tunnel and routes it
+// to the appropriate handler. conn is the upstream server connection (may be nil
+// for lazy-dial mode — dialFn will be called to establish it).
+func (e *entry) dispatchTunnel(req *http.Request, f *Flow, cconn net.Conn, conn net.Conn, dialFn func() (net.Conn, error)) {
+	proxy := e.proxy
+	log := log.WithFields(log.Fields{"in": "Proxy.entry.dispatchTunnel", "host": req.Host})
+	wc := cconn.(*wrapClientConn)
+
+	closeBoth := func() {
+		cconn.Close()
+		if conn != nil {
+			conn.Close()
+		}
+	}
+	ensureConn := func() bool {
+		if conn != nil {
+			return true
+		}
+		var err error
+		conn, err = dialFn()
+		if err != nil {
+			cconn.Close()
+			log.Error(err)
+			return false
+		}
+		return true
+	}
+
+	// If server connection exists, probe it for server-first protocols.
+	// Server-first (SSH/SMTP/FTP): server sends data before client.
+	if conn != nil {
+		probe := make([]byte, 1)
+		conn.SetReadDeadline(time.Now().Add(peekTimeout))
+		n, _ := conn.Read(probe)
+		conn.SetReadDeadline(time.Time{})
+		if n > 0 {
+			cconn.Write(probe[:1])
+			transfer(log, conn, cconn)
+			closeBoth()
+			return
+		}
+	} else {
+		// No server conn (lazy mode): use client peek timeout to detect server-first.
+		wc.Conn.SetReadDeadline(time.Now().Add(peekTimeout))
+	}
+
+	peek, err := wc.Peek(3)
+	wc.Conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		if !ensureConn() {
+			return
+		}
+		transfer(log, conn, cconn)
+		closeBoth()
+		return
+	}
+
+	if helper.IsTls(peek) {
+		f.ConnContext.ClientConn.Tls = true
+		if conn != nil {
+			proxy.interceptor.httpsTlsDial(req.Context(), cconn, conn)
+		} else {
+			proxy.interceptor.httpsLazyAttack(req.Context(), cconn, req)
+		}
+		return
+	}
+
+	wsPeek, _ := wc.PeekBuffered()
+	if helper.IsWebSocket(wsPeek) {
+		if !ensureConn() {
+			return
+		}
+		if err := proxy.webSocketHandler.handle(conn, cconn, f); err != nil {
+			log.Errorf("WebSocket handle error: %v", err)
+			closeBoth()
+		}
+		return
+	}
+
+	if !ensureConn() {
+		return
+	}
+	if helper.IsHTTPRequest(wsPeek) {
+		proxy.interceptor.servePlainHTTP(cconn, conn)
+		return
+	}
+
+	transfer(log, conn, cconn)
+	closeBoth()
+}
+
 func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	log := log.WithFields(log.Fields{
-		"in":   "Proxy.entry.httpsDialFirstAttack",
-		"host": req.Host,
-	})
 
 	conn, err := proxy.interceptor.httpsDial(req.Context(), req)
 	if err != nil {
@@ -336,142 +423,18 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 		return
 	}
 
-	wc := cconn.(*wrapClientConn)
-	wc.Conn.SetReadDeadline(time.Now().Add(peekTimeout))
-	peek, err := wc.Peek(3)
-	wc.Conn.SetReadDeadline(time.Time{})
-
-	if err != nil {
-		// Peek timeout: client didn't send data — server-first protocol (SSH/SMTP/etc).
-		// Fall back to raw byte transfer.
-		log.Debugf("peek timeout, fallback to transfer for %s", req.Host)
-		transfer(log, conn, cconn)
-		cconn.Close()
-		conn.Close()
-		return
-	}
-
-	if helper.IsTls(peek) {
-		f.ConnContext.ClientConn.Tls = true
-		proxy.interceptor.httpsTlsDial(req.Context(), cconn, conn)
-		return
-	}
-
-	wsPeek, err := wc.PeekBuffered()
-	if err == io.EOF {
-		err = nil
-	}
-	if err != nil {
-		cconn.Close()
-		conn.Close()
-		log.Error(err)
-		return
-	}
-
-	if helper.IsWebSocket(wsPeek) {
-		err = proxy.webSocketHandler.handle(conn, cconn, f)
-		if err != nil {
-			log.Errorf("WebSocket handle error: %v", err)
-			cconn.Close()
-			conn.Close()
-		}
-		return
-	}
-
-	if helper.IsHTTPRequest(wsPeek) {
-		proxy.interceptor.servePlainHTTP(cconn, conn)
-		return
-	}
-
-	transfer(log, conn, cconn)
-	cconn.Close()
-	conn.Close()
+	e.dispatchTunnel(req, f, cconn, conn, nil)
 }
 
 func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
 	proxy := e.proxy
-	log := log.WithFields(log.Fields{
-		"in":   "Proxy.entry.httpsDialLazyAttack",
-		"host": req.Host,
-	})
 
 	cconn, err := e.establishConnection(res, f)
 	if err != nil {
-		log.Error(err)
 		return
 	}
 
-	wc := cconn.(*wrapClientConn)
-	wc.Conn.SetReadDeadline(time.Now().Add(peekTimeout))
-	peek, err := wc.Peek(3)
-	wc.Conn.SetReadDeadline(time.Time{})
-
-	if err != nil {
-		log.Debugf("peek timeout, fallback to transfer for %s", req.Host)
-		conn, dialErr := proxy.interceptor.httpsDial(req.Context(), req)
-		if dialErr != nil {
-			cconn.Close()
-			log.Error(dialErr)
-			return
-		}
-		transfer(log, conn, cconn)
-		conn.Close()
-		cconn.Close()
-		return
-	}
-
-	if helper.IsTls(peek) {
-		f.ConnContext.ClientConn.Tls = true
-		proxy.interceptor.httpsLazyAttack(req.Context(), cconn, req)
-		return
-	}
-
-	wsPeek, err := wc.PeekBuffered()
-	if err == io.EOF {
-		err = nil
-	}
-	if err != nil {
-		cconn.Close()
-		log.Error(err)
-		return
-	}
-
-	if helper.IsWebSocket(wsPeek) {
-		conn, err := proxy.interceptor.httpsDial(req.Context(), req)
-		if err != nil {
-			cconn.Close()
-			log.Error(err)
-			return
-		}
-		err = proxy.webSocketHandler.handle(conn, cconn, f)
-		if err != nil {
-			log.Errorf("WebSocket handle error: %v", err)
-			cconn.Close()
-			conn.Close()
-		}
-		return
-	}
-
-	conn, err := proxy.interceptor.httpsDial(req.Context(), req)
-	if err != nil {
-		cconn.Close()
-		log.Error(err)
-		return
-	}
-
-	lazyPeek, err := cconn.(*wrapClientConn).Peek(8)
-	if err != nil {
-		cconn.Close()
-		conn.Close()
-		log.Error(err)
-		return
-	}
-	if helper.IsHTTPRequest(lazyPeek) {
-		proxy.interceptor.servePlainHTTP(cconn, conn)
-		return
-	}
-
-	transfer(log, conn, cconn)
-	conn.Close()
-	cconn.Close()
+	e.dispatchTunnel(req, f, cconn, nil, func() (net.Conn, error) {
+		return proxy.interceptor.httpsDial(req.Context(), req)
+	})
 }
