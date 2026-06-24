@@ -368,8 +368,14 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 		return
 	}
 
-	// Non-TLS, non-WebSocket: route through interceptor HTTP server so addon hooks fire.
-	proxy.interceptor.servePlainHTTP(cconn, conn)
+	if helper.IsHTTPRequest(wsPeek) {
+		proxy.interceptor.servePlainHTTP(cconn, conn)
+		return
+	}
+
+	transfer(log, conn, cconn)
+	cconn.Close()
+	conn.Close()
 }
 
 func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, f *Flow) {
@@ -430,6 +436,20 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 		log.Error(err)
 		return
 	}
-	// Non-TLS, non-WebSocket: route through interceptor HTTP server so addon hooks fire.
-	proxy.interceptor.servePlainHTTP(cconn, conn)
+
+	lazyPeek, err := cconn.(*wrapClientConn).Peek(8)
+	if err != nil {
+		cconn.Close()
+		conn.Close()
+		log.Error(err)
+		return
+	}
+	if helper.IsHTTPRequest(lazyPeek) {
+		proxy.interceptor.servePlainHTTP(cconn, conn)
+		return
+	}
+
+	transfer(log, conn, cconn)
+	conn.Close()
+	cconn.Close()
 }
