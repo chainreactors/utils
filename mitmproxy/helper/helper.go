@@ -81,6 +81,16 @@ func IsWebSocket(buf []byte) bool {
 		strings.Contains(strings.ToLower(connection), "upgrade")
 }
 
+func IsHTTPRequest(buf []byte) bool {
+	methods := []string{"GET ", "POST ", "PUT ", "DELETE ", "HEAD ", "OPTIONS ", "PATCH ", "TRACE "}
+	for _, m := range methods {
+		if len(buf) >= len(m) && string(buf[:len(m)]) == m {
+			return true
+		}
+	}
+	return false
+}
+
 type ResponseCheck struct {
 	http.ResponseWriter
 	Wrote bool
