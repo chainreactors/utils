@@ -7,10 +7,13 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/chainreactors/utils/mitmproxy/helper"
 	log "github.com/sirupsen/logrus"
 )
+
+const peekTimeout = 500 * time.Millisecond
 
 // wrap tcpListener for remote client
 type wrapListener struct {
@@ -333,11 +336,18 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 		return
 	}
 
-	peek, err := cconn.(*wrapClientConn).Peek(3)
+	wc := cconn.(*wrapClientConn)
+	wc.Conn.SetReadDeadline(time.Now().Add(peekTimeout))
+	peek, err := wc.Peek(3)
+	wc.Conn.SetReadDeadline(time.Time{})
+
 	if err != nil {
+		// Peek timeout: client didn't send data — server-first protocol (SSH/SMTP/etc).
+		// Fall back to raw byte transfer.
+		log.Debugf("peek timeout, fallback to transfer for %s", req.Host)
+		transfer(log, conn, cconn)
 		cconn.Close()
 		conn.Close()
-		log.Error(err)
 		return
 	}
 
@@ -347,7 +357,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 		return
 	}
 
-	wsPeek, err := cconn.(*wrapClientConn).PeekBuffered()
+	wsPeek, err := wc.PeekBuffered()
 	if err == io.EOF {
 		err = nil
 	}
@@ -391,10 +401,22 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 		return
 	}
 
-	peek, err := cconn.(*wrapClientConn).Peek(3)
+	wc := cconn.(*wrapClientConn)
+	wc.Conn.SetReadDeadline(time.Now().Add(peekTimeout))
+	peek, err := wc.Peek(3)
+	wc.Conn.SetReadDeadline(time.Time{})
+
 	if err != nil {
+		log.Debugf("peek timeout, fallback to transfer for %s", req.Host)
+		conn, dialErr := proxy.interceptor.httpsDial(req.Context(), req)
+		if dialErr != nil {
+			cconn.Close()
+			log.Error(dialErr)
+			return
+		}
+		transfer(log, conn, cconn)
+		conn.Close()
 		cconn.Close()
-		log.Error(err)
 		return
 	}
 
@@ -404,7 +426,7 @@ func (e *entry) httpsDialLazyAttack(res http.ResponseWriter, req *http.Request, 
 		return
 	}
 
-	wsPeek, err := cconn.(*wrapClientConn).PeekBuffered()
+	wsPeek, err := wc.PeekBuffered()
 	if err == io.EOF {
 		err = nil
 	}
