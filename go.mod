@@ -8,5 +8,6 @@ require (
 	github.com/go-dedup/text v0.0.0-20170907015346-8bb1b95e3cb7 // indirect
 	github.com/stretchr/testify v1.9.0
 	github.com/twmb/murmur3 v1.1.8
+	golang.org/x/text v0.3.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1
 )
