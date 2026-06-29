@@ -1,22 +1,24 @@
 package utils
 
 import (
-	"fmt"
 	"github.com/chainreactors/utils/iutils"
 	"strconv"
 	"strings"
 )
 
+// Deprecated: 不要依赖全局 PrePort，各项目应自持有 *PortPreset 实例。
 var PrePort *PortPreset
 
 func ParsePortsString(s string) []string {
+	if PrePort == nil {
+		return expandPorts(strings.Split(strings.TrimSpace(s), ","))
+	}
 	return PrePort.ParsePortString(s)
 }
 
 func ParsePortsSlice(ports []string) []string {
 	if PrePort == nil {
-		fmt.Println("PrePort is nil, please NewPortPreset")
-		return ports
+		return expandPorts(ports)
 	}
 	return PrePort.ParsePortSlice(ports)
 }
