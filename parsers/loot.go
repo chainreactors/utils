@@ -6,7 +6,7 @@ type Loot struct {
 	Priority    string         `json:"priority"`
 	Description string         `json:"description,omitempty"`
 	Tags        []string       `json:"tags,omitempty"`
-	Data        map[string]any `json:"data,omitempty"`
+	Data        map[string]interface{} `json:"data,omitempty"`
 }
 
 func (l Loot) Key() string {
