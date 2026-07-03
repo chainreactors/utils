@@ -11,6 +11,7 @@ type ProtonFinding struct {
 	TemplateName string                          `json:"template-name"`
 	Severity     string                          `json:"severity"`
 	FilePath     string                          `json:"file"`
+	Class        string                          `json:"class"`
 	Matches      map[string][]ProtonMatchEvent   `json:"matches,omitempty"`
 	Extracts     []ProtonMatchEvent              `json:"extracts,omitempty"`
 	Result       *NeutronResult                  `json:"-"`
