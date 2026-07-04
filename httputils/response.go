@@ -1,7 +1,4 @@
-//go:build tinygo
-// +build tinygo
-
-package parsers
+package httputils
 
 import (
 	"bufio"
@@ -10,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/chainreactors/utils/encode"
-	"github.com/chainreactors/utils/httputils"
 )
 
 func NewResponse(resp *http.Response, size int64) *Response {
@@ -18,9 +14,9 @@ func NewResponse(resp *http.Response, size int64) *Response {
 		Resp: resp,
 	}
 	if size > 0 {
-		r.Content = NewContent(httputils.ReadRawWithSize(resp, size))
+		r.Content = NewContent(ReadRawWithSize(resp, size))
 	} else {
-		r.Content = NewContent(httputils.ReadRaw(resp))
+		r.Content = NewContent(ReadRaw(resp))
 	}
 
 	if title := MatchTitle(r.Raw); title != "" {
@@ -30,10 +26,16 @@ func NewResponse(resp *http.Response, size int64) *Response {
 		r.Title = MatchCharacter(r.Raw)
 	}
 	r.Server = resp.Header.Get("Server")
+	if resp.TLS != nil {
+		r.SSLHost = resp.TLS.PeerCertificates[0].DNSNames
+	}
 
 	if resp.Request != nil {
 		for resp = resp.Request.Response; resp != nil; {
-			content := NewContent(httputils.ReadRaw(resp))
+			content := NewContent(ReadRaw(resp))
+			if resp.TLS != nil {
+				content.SSLHost = resp.TLS.PeerCertificates[0].DNSNames
+			}
 			r.History = append(r.History, content)
 			resp = resp.Request.Response
 		}
@@ -42,12 +44,11 @@ func NewResponse(resp *http.Response, size int64) *Response {
 	return r
 }
 
-func NewResponseWithRaw(raw []byte) *Response {
+func NewParsedResponse(raw []byte) *Response {
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), nil)
 	if err != nil {
 		return nil
 	}
-
 	return NewResponse(resp, 0)
 }
 
@@ -62,8 +63,8 @@ type Response struct {
 }
 
 func NewContent(raw []byte) *Content {
-	raw = httputils.AutoDecodeRaw(raw)
-	body, header, _ := httputils.SplitHttpRaw(raw)
+	raw = AutoDecodeRaw(raw)
+	body, header, _ := SplitHttpRaw(raw)
 	return &Content{
 		Body:   body,
 		Header: header,
@@ -90,7 +91,7 @@ func (r *Response) Hash() {
 }
 
 func NewHashes(content []byte) *Hashes {
-	body, header, _ := httputils.SplitHttpRaw(content)
+	body, header, _ := SplitHttpRaw(content)
 	return &Hashes{
 		BodyMd5:       encode.Md5Hash(body),
 		HeaderMd5:     encode.Md5Hash(header),
@@ -117,4 +118,3 @@ var SimhashThreshold uint8 = 8
 func (hs *Hashes) Compare(other *Hashes) (uint8, uint8, uint8) {
 	return encode.SimhashCompare(hs.BodySimhash, other.BodySimhash), encode.SimhashCompare(hs.HeaderSimhash, other.HeaderSimhash), encode.SimhashCompare(hs.RawSimhash, other.RawSimhash)
 }
-
