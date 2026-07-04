@@ -16,6 +16,20 @@ func TestExtractLiterals(t *testing.T) {
 		{`(?i)^ab`, nil},
 		{`(?i)nginx/([\d\.]+)`, []string{"nginx/"}},
 		{`^X-Powered-By:\s+Express`, []string{"X-Powered-By:"}},
+
+		// ? makes preceding char optional → drop it from literal
+		{`(?i)(https?://[^\s"'<>]+)`, []string{"http"}},
+		{`colou?r`, []string{"colo"}},
+
+		// top-level alternation → no required literal
+		{`DEBUG|TRACE|debug_mode=true`, nil},
+		{`(?i)DEBUG|TRACE`, nil},
+
+		// grouped alternation still works
+		{`(?i)(DEBUG|TRACE|debug_mode)`, []string{"DEBUG", "TRACE", "debug_mode"}},
+
+		// * makes preceding char optional
+		{`https*://foo`, []string{"://foo"}},
 	}
 
 	for _, tt := range tests {

@@ -23,6 +23,11 @@ func ExtractLiterals(pattern string) []string {
 		p = p[2:]
 	}
 
+	// Top-level alternation (no wrapping group) → no single literal is required.
+	if hasTopLevelAlt(p) {
+		return nil
+	}
+
 	if idx := strings.Index(p, "("); idx >= 0 {
 		end := strings.Index(p[idx:], ")")
 		if end > 0 {
@@ -118,6 +123,12 @@ func ExtractLiterals(pattern string) []string {
 			continue
 		}
 		if strings.ContainsRune(".*+?^$})|]", rune(ch)) {
+			// '?' and '*' make the preceding character optional — drop it.
+			if (ch == '?' || ch == '*') && current.Len() > 0 {
+				s := current.String()
+				current.Reset()
+				current.WriteString(s[:len(s)-1])
+			}
 			if current.Len() > len(best) {
 				best = current.String()
 			}
@@ -134,4 +145,28 @@ func ExtractLiterals(pattern string) []string {
 		return []string{best}
 	}
 	return nil
+}
+
+// hasTopLevelAlt reports whether the pattern contains a | outside any group.
+func hasTopLevelAlt(p string) bool {
+	depth := 0
+	for i := 0; i < len(p); i++ {
+		switch p[i] {
+		case '\\':
+			if i+1 < len(p) {
+				i++
+			}
+		case '(':
+			depth++
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+		case '|':
+			if depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
