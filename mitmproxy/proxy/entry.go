@@ -355,11 +355,15 @@ func (e *entry) dispatchTunnel(req *http.Request, f *Flow, cconn net.Conn, conn 
 			closeBoth()
 			return
 		}
-	} else {
-		// No server conn (lazy mode): use client peek timeout to detect server-first.
-		wc.Conn.SetReadDeadline(time.Now().Add(peekTimeout))
 	}
 
+	// Always bound the client-side peek. For a server-first protocol whose
+	// server probe above returned nothing (idle/slow server, or lazy mode with
+	// no server conn yet) the client is itself waiting for the server and will
+	// never send the bytes Peek wants — without a deadline Peek blocks forever,
+	// a deadlock that surfaced as intermittent hangs under load. The timeout
+	// lets it fall through to raw transfer below.
+	wc.Conn.SetReadDeadline(time.Now().Add(peekTimeout))
 	peek, err := wc.Peek(3)
 	wc.Conn.SetReadDeadline(time.Time{})
 	if err != nil {
