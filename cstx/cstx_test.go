@@ -35,23 +35,10 @@ func TestParseGogoResults(t *testing.T) {
 	types := make(map[string]int)
 	for _, n := range nodes {
 		types[n.CstxType()]++
-		switch v := n.(type) {
-		case *Ip:
-			t.Logf("  ip: %s (cidr=%s)", v.Ip, v.Cidr)
-		case *Port:
-			t.Logf("  port: %s:%s/%s", v.Ip, v.Port, v.Protocol)
-		case *App:
-			t.Logf("  app: %s title=%q frameworks=%v", v.AppId, v.Title, v.Frameworks)
-		case *Framework:
-			t.Logf("  framework: %s", v.Name)
-		case *Vuln:
-			t.Logf("  vuln: %s severity=%s", v.Name, v.Severity)
-		default:
-			t.Logf("  %s %s", n.CstxType(), n.CstxID())
-		}
+		t.Logf("  %s %s", n.CstxType(), n.CstxID())
 	}
 
-	for _, expect := range []string{"ip", "port", "app"} {
+	for _, expect := range []string{"ip", "port", "app", "framework", "vuln"} {
 		if types[expect] == 0 {
 			t.Errorf("missing node type: %s", expect)
 		}
@@ -79,12 +66,14 @@ func TestParseSprayResults(t *testing.T) {
 		t.Fatal("expected nodes, got empty")
 	}
 
+	types := make(map[string]int)
 	for _, n := range nodes {
-		if app, ok := n.(*App); ok {
-			t.Logf("  app: %s host=%s content_type=%s body_length=%d", app.AppId, app.Host, app.ContentType, app.BodyLength)
-		} else {
-			t.Logf("  %s %s", n.CstxType(), n.CstxID())
-		}
+		types[n.CstxType()]++
+		t.Logf("  %s %s", n.CstxType(), n.CstxID())
+	}
+
+	if types["framework"] == 0 {
+		t.Error("missing framework node from spray with map-format Frameworks")
 	}
 }
 
@@ -120,11 +109,39 @@ func TestParseZombieResults(t *testing.T) {
 		t.Fatal("expected nodes, got empty")
 	}
 
+	hasVuln := false
 	for _, n := range nodes {
 		if vuln, ok := n.(*Vuln); ok {
+			hasVuln = true
 			t.Logf("  vuln: %s user=%s pass=%s severity=%s", vuln.Name, vuln.Username, vuln.Password, vuln.Severity)
 		} else {
 			t.Logf("  %s %s", n.CstxType(), n.CstxID())
 		}
+	}
+	if !hasVuln {
+		t.Error("expected vuln node from zombie result")
+	}
+}
+
+func TestParseSingleResult(t *testing.T) {
+	cases := []struct {
+		tool  string
+		input any
+	}{
+		{"gogo", &parsers.GOGOResult{Ip: "172.16.0.1", Port: "8443", Protocol: "https", Title: "Admin"}},
+		{"spray", &parsers.SprayResult{UrlString: "https://api.example.com/health", Status: 200, Host: "api.example.com"}},
+		{"zombie", &parsers.ZombieResult{IP: "10.10.10.1", Port: "3306", Service: "mysql", Username: "admin", Password: "admin123"}},
+	}
+	for _, tc := range cases {
+		nodes, err := Parse(tc.tool, tc.input)
+		if err != nil {
+			t.Errorf("Parse single %s: %v", tc.tool, err)
+			continue
+		}
+		if len(nodes) == 0 {
+			t.Errorf("single %s: expected nodes, got none", tc.tool)
+			continue
+		}
+		t.Logf("single %s -> %d nodes", tc.tool, len(nodes))
 	}
 }
