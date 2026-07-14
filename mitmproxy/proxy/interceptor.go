@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/chainreactors/utils/mitmproxy/cert"
 	"github.com/chainreactors/utils/mitmproxy/helper"
@@ -728,6 +729,7 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 			f.Stream = true
 		} else {
 			f.Response.Body = resBuf
+			f.EndTime = time.Now()
 
 			// trigger addon event Response
 			for _, addon := range proxy.Addons {

@@ -33,6 +33,12 @@ func NewFlowRecord(f *Flow, maxBodySnip int) *FlowRecord {
 		Timestamp: f.StartTime,
 	}
 
+	if !f.EndTime.IsZero() {
+		r.Duration = f.EndTime.Sub(f.StartTime)
+	} else if !f.StartTime.IsZero() {
+		r.Duration = time.Since(f.StartTime)
+	}
+
 	if f.Request != nil {
 		r.Method = f.Request.Method
 		if f.Request.URL != nil {

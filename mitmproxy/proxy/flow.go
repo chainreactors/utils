@@ -117,6 +117,7 @@ type Flow struct {
 	Stream            bool
 	UseSeparateClient bool // use separate http client to send http request
 	StartTime         time.Time
+	EndTime           time.Time // set by proxy engine before Response/RequestError hooks
 	done              chan struct{}
 }
 

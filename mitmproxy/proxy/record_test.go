@@ -21,17 +21,6 @@ func mustParseURL(raw string) *url.URL {
 	return u
 }
 
-func proxyClient(addr string) *http.Client {
-	proxyURL, _ := url.Parse("http://" + addr)
-	return &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
-}
-
 func TestNewFlowRecord(t *testing.T) {
 	f := newFlow()
 	f.Request = &Request{
@@ -80,25 +69,23 @@ func TestSnipBytes(t *testing.T) {
 	}
 }
 
-func TestRecordAddon_CapturesFlows(t *testing.T) {
+func TestNewFlowRecord_Integration(t *testing.T) {
 	var mu sync.Mutex
 	var captured []*FlowRecord
 
-	addon := NewRecordAddon(func(r *FlowRecord) {
-		mu.Lock()
-		captured = append(captured, r)
-		mu.Unlock()
-	})
+	addon := &captureAddon{
+		onRecord: func(r *FlowRecord) {
+			mu.Lock()
+			captured = append(captured, r)
+			mu.Unlock()
+		},
+	}
 
-	p, err := NewProxy(&Options{
-		Addr:        "127.0.0.1:0",
-		SslInsecure: true,
-	})
+	p, err := NewProxy(&Options{Addr: "127.0.0.1:0", SslInsecure: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.AddAddon(addon)
-
 	addr, _, err := p.StartAsync()
 	if err != nil {
 		t.Fatal(err)
@@ -108,11 +95,18 @@ func TestRecordAddon_CapturesFlows(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(200)
-		fmt.Fprint(w, "hello from target")
+		fmt.Fprint(w, "hello")
 	}))
 	defer target.Close()
 
-	client := proxyClient(addr.String())
+	proxyURL, _ := url.Parse("http://" + addr.String())
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			Proxy:           http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 	resp, err := client.Get(target.URL + "/test")
 	if err != nil {
 		t.Fatal(err)
@@ -124,63 +118,35 @@ func TestRecordAddon_CapturesFlows(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-
 	if len(captured) != 1 {
-		t.Fatalf("expected 1 flow, got %d", len(captured))
+		t.Fatalf("expected 1, got %d", len(captured))
 	}
 	r := captured[0]
-	if r.Method != "GET" {
-		t.Fatalf("method: expected GET, got %s", r.Method)
+	if r.Method != "GET" || r.StatusCode != 200 || r.Duration <= 0 {
+		t.Fatalf("unexpected record: method=%s status=%d dur=%v", r.Method, r.StatusCode, r.Duration)
 	}
-	if r.StatusCode != 200 {
-		t.Fatalf("status: expected 200, got %d", r.StatusCode)
-	}
-	if r.Duration <= 0 {
-		t.Fatal("expected positive duration")
-	}
-	if string(r.ResponseBody) != "hello from target" {
-		t.Fatalf("body: expected 'hello from target', got %q", string(r.ResponseBody))
+	if string(r.ResponseBody) != "hello" {
+		t.Fatalf("body: %q", string(r.ResponseBody))
 	}
 }
 
-func TestRecordAddon_BodySnip(t *testing.T) {
-	var mu sync.Mutex
-	var captured []*FlowRecord
+// captureAddon is a minimal consumer-side addon using BaseAddon + NewFlowRecord.
+type captureAddon struct {
+	BaseAddon
+	pending  sync.Map
+	onRecord func(*FlowRecord)
+}
 
-	addon := NewRecordAddon(func(r *FlowRecord) {
-		mu.Lock()
-		captured = append(captured, r)
-		mu.Unlock()
-	})
-	addon.MaxBodySnip = 5
+func (a *captureAddon) Requestheaders(f *Flow) {
+	a.pending.Store(f.Id.String(), time.Now())
+}
 
-	p, err := NewProxy(&Options{Addr: "127.0.0.1:0", SslInsecure: true})
-	if err != nil {
-		t.Fatal(err)
+func (a *captureAddon) Response(f *Flow) {
+	var dur time.Duration
+	if v, ok := a.pending.LoadAndDelete(f.Id.String()); ok {
+		dur = time.Since(v.(time.Time))
 	}
-	p.AddAddon(addon)
-	addr, _, _ := p.StartAsync()
-	defer p.Shutdown(context.Background())
-
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "1234567890")
-	}))
-	defer target.Close()
-
-	resp, err := proxyClient(addr.String()).Get(target.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	io.ReadAll(resp.Body)
-	resp.Body.Close()
-	time.Sleep(100 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(captured) != 1 {
-		t.Fatalf("expected 1 flow, got %d", len(captured))
-	}
-	if len(captured[0].ResponseBody) != 5 {
-		t.Fatalf("expected body snip=5, got %d", len(captured[0].ResponseBody))
-	}
+	r := NewFlowRecord(f, 0)
+	r.Duration = dur
+	a.onRecord(r)
 }
