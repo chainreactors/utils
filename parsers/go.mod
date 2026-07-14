@@ -1,6 +1,6 @@
 module github.com/chainreactors/utils/parsers
 
-go 1.22.0
+go 1.17
 
 require (
 	github.com/chainreactors/logs v0.0.0-20260508055944-c678762ed15c
