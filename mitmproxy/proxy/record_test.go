@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,17 @@ func mustParseURL(raw string) *url.URL {
 		panic(err)
 	}
 	return u
+}
+
+func proxyClient(addr string) *http.Client {
+	proxyURL, _ := url.Parse("http://" + addr)
+	return &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			Proxy:           http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 }
 
 func TestNewFlowRecord(t *testing.T) {
@@ -72,13 +84,10 @@ func TestRecordAddon_CapturesFlows(t *testing.T) {
 	var mu sync.Mutex
 	var captured []*FlowRecord
 
-	addon := NewRecordAddon(RecordAddonConfig{
-		MaxBodySnip: 1024,
-		OnRecord: func(r *FlowRecord) {
-			mu.Lock()
-			captured = append(captured, r)
-			mu.Unlock()
-		},
+	addon := NewRecordAddon(func(r *FlowRecord) {
+		mu.Lock()
+		captured = append(captured, r)
+		mu.Unlock()
 	})
 
 	p, err := NewProxy(&Options{
@@ -103,10 +112,7 @@ func TestRecordAddon_CapturesFlows(t *testing.T) {
 	}))
 	defer target.Close()
 
-	client, err := NewProxyHTTPClient("http://"+addr.String(), 5*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	client := proxyClient(addr.String())
 	resp, err := client.Get(target.URL + "/test")
 	if err != nil {
 		t.Fatal(err)
@@ -137,131 +143,44 @@ func TestRecordAddon_CapturesFlows(t *testing.T) {
 	}
 }
 
-func TestRecordAddon_TagExtraction(t *testing.T) {
+func TestRecordAddon_BodySnip(t *testing.T) {
 	var mu sync.Mutex
 	var captured []*FlowRecord
 
-	addon := NewRecordAddon(RecordAddonConfig{
-		TagHeader: "X-Test-Tag",
-		TagKey:    "test",
-		StripTag:  true,
-		OnRecord: func(r *FlowRecord) {
-			mu.Lock()
-			captured = append(captured, r)
-			mu.Unlock()
-		},
+	addon := NewRecordAddon(func(r *FlowRecord) {
+		mu.Lock()
+		captured = append(captured, r)
+		mu.Unlock()
 	})
+	addon.MaxBodySnip = 5
 
-	p, err := NewProxy(&Options{
-		Addr:        "127.0.0.1:0",
-		SslInsecure: true,
-	})
+	p, err := NewProxy(&Options{Addr: "127.0.0.1:0", SslInsecure: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.AddAddon(addon)
-
-	addr, _, err := p.StartAsync()
-	if err != nil {
-		t.Fatal(err)
-	}
+	addr, _, _ := p.StartAsync()
 	defer p.Shutdown(context.Background())
 
-	var receivedTag string
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedTag = r.Header.Get("X-Test-Tag")
-		w.WriteHeader(200)
+		fmt.Fprint(w, "1234567890")
 	}))
 	defer target.Close()
 
-	client, err := NewTaggedProxyClient("http://"+addr.String(), "X-Test-Tag", "my-scan-123", 5*time.Second)
+	resp, err := proxyClient(addr.String()).Get(target.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := client.Get(target.URL + "/check")
-	if err != nil {
-		t.Fatal(err)
-	}
+	io.ReadAll(resp.Body)
 	resp.Body.Close()
-
 	time.Sleep(100 * time.Millisecond)
-
-	if receivedTag != "" {
-		t.Fatalf("tag should have been stripped, but target received %q", receivedTag)
-	}
 
 	mu.Lock()
 	defer mu.Unlock()
-
 	if len(captured) != 1 {
 		t.Fatalf("expected 1 flow, got %d", len(captured))
 	}
-	if captured[0].Tags["test"] != "my-scan-123" {
-		t.Fatalf("tag: expected 'my-scan-123', got %q", captured[0].Tags["test"])
-	}
-}
-
-func TestRecordAddon_Enrich(t *testing.T) {
-	enriched := false
-	var mu sync.Mutex
-	var captured []*FlowRecord
-
-	addon := NewRecordAddon(RecordAddonConfig{
-		MaxBodySnip: 1024,
-		Enrich: func(r *FlowRecord, raw *Flow) {
-			r.Tags["custom"] = "enriched"
-			enriched = true
-		},
-		OnRecord: func(r *FlowRecord) {
-			mu.Lock()
-			captured = append(captured, r)
-			mu.Unlock()
-		},
-	})
-
-	p, err := NewProxy(&Options{
-		Addr:        "127.0.0.1:0",
-		SslInsecure: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.AddAddon(addon)
-
-	addr, _, err := p.StartAsync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer p.Shutdown(context.Background())
-
-	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-	}))
-	defer target.Close()
-
-	client, err := NewProxyHTTPClient("http://"+addr.String(), 5*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := client.Get(target.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-
-	time.Sleep(100 * time.Millisecond)
-
-	if !enriched {
-		t.Fatal("enrich callback was not called")
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if len(captured) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(captured))
-	}
-	if captured[0].Tags["custom"] != "enriched" {
-		t.Fatalf("expected enriched tag, got %v", captured[0].Tags)
+	if len(captured[0].ResponseBody) != 5 {
+		t.Fatalf("expected body snip=5, got %d", len(captured[0].ResponseBody))
 	}
 }

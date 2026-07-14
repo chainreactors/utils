@@ -6,24 +6,23 @@ import (
 )
 
 // FlowRecord is an immutable, serializable snapshot of an HTTP transaction.
-// Unlike Flow (which is a mutable interception-time object), FlowRecord is
-// safe for storage, querying, and JSON serialization.
+// Unlike Flow (which is a mutable interception-time object tied to live
+// connections), FlowRecord is safe for storage, querying, and serialization.
 type FlowRecord struct {
-	ID              string            `json:"id"`
-	Timestamp       time.Time         `json:"timestamp"`
-	Method          string            `json:"method"`
-	URL             string            `json:"url"`
-	Host            string            `json:"host"`
-	StatusCode      int               `json:"status_code"`
-	ContentType     string            `json:"content_type,omitempty"`
-	Duration        time.Duration     `json:"duration"`
-	RequestHeaders  http.Header       `json:"request_headers,omitempty"`
-	ResponseHeaders http.Header       `json:"response_headers,omitempty"`
-	RequestBody     []byte            `json:"request_body,omitempty"`
-	ResponseBody    []byte            `json:"response_body,omitempty"`
-	TLS             bool              `json:"tls"`
-	Error           string            `json:"error,omitempty"`
-	Tags            map[string]string `json:"tags,omitempty"`
+	ID              string        `json:"id"`
+	Timestamp       time.Time     `json:"timestamp"`
+	Method          string        `json:"method"`
+	URL             string        `json:"url"`
+	Host            string        `json:"host"`
+	StatusCode      int           `json:"status_code"`
+	ContentType     string        `json:"content_type,omitempty"`
+	Duration        time.Duration `json:"duration"`
+	RequestHeaders  http.Header   `json:"request_headers,omitempty"`
+	ResponseHeaders http.Header   `json:"response_headers,omitempty"`
+	RequestBody     []byte        `json:"request_body,omitempty"`
+	ResponseBody    []byte        `json:"response_body,omitempty"`
+	TLS             bool          `json:"tls"`
+	Error           string        `json:"error,omitempty"`
 }
 
 // NewFlowRecord converts an interception-time Flow into an immutable record.
@@ -32,7 +31,6 @@ func NewFlowRecord(f *Flow, maxBodySnip int) *FlowRecord {
 	r := &FlowRecord{
 		ID:        f.Id.String(),
 		Timestamp: f.StartTime,
-		Tags:      make(map[string]string),
 	}
 
 	if f.Request != nil {
