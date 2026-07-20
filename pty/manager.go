@@ -418,7 +418,11 @@ func (m *Manager) start(c *exec.Cmd, cmdDisplay, name string, timeout time.Durat
 
 func (m *Manager) supervise(s *session, timeout time.Duration) {
 	waitDone := make(chan error, 1)
-	go func() { waitDone <- s.pty.Wait() }()
+	processDone := make(chan struct{})
+	go func() {
+		waitDone <- s.pty.Wait()
+		close(processDone)
+	}()
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -434,7 +438,7 @@ func (m *Manager) supervise(s *session, timeout time.Duration) {
 	case <-timer.C:
 		killCause = fmt.Sprintf("timeout after %s", timeout)
 		m.setKillCause(s, killCause)
-		m.forceKill(s)
+		m.forceKill(s, processDone)
 		waitErr = <-waitDone
 	}
 
@@ -489,7 +493,7 @@ func (m *Manager) supervise(s *session, timeout time.Duration) {
 	}
 }
 
-func (m *Manager) forceKill(s *session) {
+func (m *Manager) forceKill(s *session, done <-chan struct{}) {
 	if s.pty == nil {
 		return
 	}
@@ -497,7 +501,7 @@ func (m *Manager) forceKill(s *session) {
 	timer := time.NewTimer(killGrace)
 	defer timer.Stop()
 	select {
-	case <-s.done:
+	case <-done:
 		return
 	case <-timer.C:
 	}
@@ -542,7 +546,7 @@ func (m *Manager) Kill(id string) error {
 		}
 		return nil
 	}
-	go m.forceKill(s)
+	go m.forceKill(s, s.done)
 	return nil
 }
 

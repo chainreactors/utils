@@ -62,6 +62,28 @@ func TestCreateAndCompletion(t *testing.T) {
 	}
 }
 
+func TestTimeoutStopsSessionPromptly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only test")
+	}
+	mgr := NewManager()
+	defer mgr.Shutdown()
+
+	started := time.Now()
+	info, err := mgr.Create(t.TempDir(), "sleep 5", "timeout-test", 100*time.Millisecond, nil, "")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	<-mgr.Done(info.ID)
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("timeout stopped session after %s", elapsed)
+	}
+	final, _ := mgr.Get(info.ID)
+	if final.State != StateKilled || final.KillCause == "" {
+		t.Fatalf("result = %+v", final)
+	}
+}
+
 func TestSetOnEventReceivesLifecycleEvents(t *testing.T) {
 	mgr := NewManager()
 	events := make(chan Event, 8)
