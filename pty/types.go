@@ -25,24 +25,24 @@ const (
 )
 
 type Frame struct {
-	Type      FrameType
-	StreamID  string
-	SessionID string
-	Kind      string
-	Name      string
-	Command   string
-	Args      []string
-	Data      []byte
-	Cols      int
-	Rows      int
-	Bytes     int
-	Offset    int64
-	Singleton bool
-	Error     string
-	State     State
-	ExitCode  int
-	Session   *Info
-	Sessions  []Info
+	Type      FrameType `json:"type"`
+	StreamID  string    `json:"stream_id,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`
+	Kind      string    `json:"kind,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	Command   string    `json:"command,omitempty"`
+	Args      []string  `json:"args,omitempty"`
+	Data      []byte    `json:"data,omitempty"`
+	Cols      int       `json:"cols,omitempty"`
+	Rows      int       `json:"rows,omitempty"`
+	Bytes     int       `json:"bytes,omitempty"`
+	Offset    int64     `json:"offset,omitempty"`
+	Singleton bool      `json:"singleton,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	State     State     `json:"state,omitempty"`
+	ExitCode  int       `json:"exit_code,omitempty"`
+	Session   *Info     `json:"session,omitempty"`
+	Sessions  []Info    `json:"sessions,omitempty"`
 }
 
 type OpenSpec struct {

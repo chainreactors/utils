@@ -36,16 +36,19 @@ const (
 )
 
 type Info struct {
-	ID        string    `json:"id"`
-	Kind      string    `json:"kind,omitempty"`
-	Name      string    `json:"name,omitempty"`
-	Command   string    `json:"command"`
-	PID       int       `json:"pid"`
-	StartedAt time.Time `json:"started_at"`
-	EndedAt   time.Time `json:"ended_at,omitempty"`
-	ExitCode  int       `json:"exit_code"`
-	State     State     `json:"state"`
-	KillCause string    `json:"kill_cause,omitempty"`
+	ID             string    `json:"id"`
+	Kind           string    `json:"kind,omitempty"`
+	Name           string    `json:"name,omitempty"`
+	Command        string    `json:"command"`
+	PID            int       `json:"pid"`
+	StartedAt      time.Time `json:"started_at"`
+	LastActivityAt time.Time `json:"last_activity_at,omitempty"`
+	EndedAt        time.Time `json:"ended_at,omitempty"`
+	ActivitySeq    int64     `json:"activity_seq,omitempty"`
+	OutputBytes    int64     `json:"output_bytes,omitempty"`
+	ExitCode       int       `json:"exit_code"`
+	State          State     `json:"state"`
+	KillCause      string    `json:"kill_cause,omitempty"`
 }
 
 type EventAction string
@@ -158,13 +161,16 @@ func (m *Manager) CreateFunc(parentCtx context.Context, name string, timeout tim
 	}
 	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 
+	startedAt := time.Now()
 	info := Info{
-		ID:        id,
-		Kind:      "task",
-		Name:      name,
-		Command:   name,
-		StartedAt: time.Now(),
-		State:     StateRunning,
+		ID:             id,
+		Kind:           "task",
+		Name:           name,
+		Command:        name,
+		StartedAt:      startedAt,
+		LastActivityAt: startedAt,
+		ActivitySeq:    1,
+		State:          StateRunning,
 	}
 	s := &session{Info: info, output: buf, done: make(chan struct{}), cancel: cancel}
 
@@ -207,13 +213,16 @@ func (m *Manager) CreateInteractiveFunc(parentCtx context.Context, name, command
 	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	pr, pw := io.Pipe()
 
+	startedAt := time.Now()
 	info := Info{
-		ID:        id,
-		Kind:      "task",
-		Name:      name,
-		Command:   command,
-		StartedAt: time.Now(),
-		State:     StateRunning,
+		ID:             id,
+		Kind:           "task",
+		Name:           name,
+		Command:        command,
+		StartedAt:      startedAt,
+		LastActivityAt: startedAt,
+		ActivitySeq:    1,
+		State:          StateRunning,
 	}
 	s := &session{
 		Info:   info,
@@ -311,6 +320,8 @@ func (m *Manager) finishSession(s *session, fnErr error, eofIsSuccess bool) {
 
 	m.mu.Lock()
 	s.EndedAt = time.Now()
+	s.LastActivityAt = s.EndedAt
+	s.ActivitySeq++
 	s.ExitCode = exitCode
 	s.State = state
 	s.KillCause = killCause
@@ -393,14 +404,17 @@ func (m *Manager) start(c *exec.Cmd, cmdDisplay, name string, timeout time.Durat
 		return Info{}, fmt.Errorf("start pty: %w", err)
 	}
 
+	startedAt := time.Now()
 	info := Info{
-		ID:        id,
-		Kind:      "task",
-		Name:      name,
-		Command:   cmdDisplay,
-		PID:       p.PID(),
-		StartedAt: time.Now(),
-		State:     StateRunning,
+		ID:             id,
+		Kind:           "task",
+		Name:           name,
+		Command:        cmdDisplay,
+		PID:            p.PID(),
+		StartedAt:      startedAt,
+		LastActivityAt: startedAt,
+		ActivitySeq:    1,
+		State:          StateRunning,
 	}
 	s := &session{Info: info, cmd: c, output: buf, pty: p, done: make(chan struct{})}
 
@@ -474,6 +488,8 @@ func (m *Manager) supervise(s *session, timeout time.Duration) {
 
 	m.mu.Lock()
 	s.EndedAt = time.Now()
+	s.LastActivityAt = s.EndedAt
+	s.ActivitySeq++
 	s.ExitCode = exitCode
 	s.State = state
 	s.KillCause = killCause
@@ -520,6 +536,8 @@ func (m *Manager) Kill(id string) error {
 			if s.KillCause == "" {
 				s.KillCause = "killed by user"
 			}
+			s.LastActivityAt = time.Now()
+			s.ActivitySeq++
 			infoCopy = s.Info
 		}
 	}
@@ -623,6 +641,8 @@ func (m *Manager) SetKind(id, kind string) {
 	m.mu.Lock()
 	if s := m.resolve(id); s != nil {
 		s.Kind = kind
+		s.LastActivityAt = time.Now()
+		s.ActivitySeq++
 		infoCopy = s.Info
 	}
 	m.mu.Unlock()
@@ -858,7 +878,6 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 	if s == nil {
 		return fmt.Errorf("no such session: %s", id)
 	}
-	infoCopy := s.Info
 	select {
 	case <-s.done:
 		return nil
@@ -866,6 +885,7 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 	}
 	if s.pty == nil {
 		if s.input != nil {
+			infoCopy, _ := m.touchSession(id, 0)
 			m.emit(Event{Action: EventSessionUpdated, Info: infoCopy})
 			return nil
 		}
@@ -873,6 +893,7 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 	}
 	err := s.pty.Resize(cols, rows)
 	if err == nil {
+		infoCopy, _ := m.touchSession(id, 0)
 		m.emit(Event{Action: EventSessionUpdated, Info: infoCopy})
 	}
 	return err
@@ -929,17 +950,23 @@ func (m *Manager) watchOutput(s *session) {
 		if len(p) == 0 {
 			return
 		}
-		m.mu.Lock()
-		current := m.resolve(id)
-		var info Info
-		if current != nil {
-			info = current.Info
-		}
-		m.mu.Unlock()
-		if info.ID != "" {
+		if info, ok := m.touchSession(id, len(p)); ok {
 			m.emit(Event{Action: EventSessionOutput, Info: info, OutputBytes: len(p)})
 		}
 	}
+}
+
+func (m *Manager) touchSession(id string, outputBytes int) (Info, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.resolve(id)
+	if s == nil {
+		return Info{}, false
+	}
+	s.LastActivityAt = time.Now()
+	s.ActivitySeq++
+	s.OutputBytes += int64(outputBytes)
+	return s.Info, true
 }
 
 func (m *Manager) emit(ev Event) {
