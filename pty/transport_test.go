@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -16,14 +17,24 @@ func testConnRoundTrip(t *testing.T, serverConn, clientConn io.ReadWriteCloser) 
 	defer cancel()
 
 	mgr := newFakeManager()
-	var resized [][2]int
+	var (
+		resizeMu sync.Mutex
+		resized  [][2]int
+	)
+	getResized := func() [][2]int {
+		resizeMu.Lock()
+		defer resizeMu.Unlock()
+		return append([][2]int(nil), resized...)
+	}
 
 	router := NewRouter(mgr, WithOpener("shell", func(_ context.Context, spec OpenSpec) (OpenResult, error) {
 		info := mgr.add("sess-1", spec.Name, []byte("hello\n"))
 		return OpenResult{
 			Info: info,
 			Resize: func(cols, rows int) {
+				resizeMu.Lock()
 				resized = append(resized, [2]int{cols, rows})
+				resizeMu.Unlock()
 			},
 		}, nil
 	}))
@@ -65,19 +76,19 @@ func testConnRoundTrip(t *testing.T, serverConn, clientConn io.ReadWriteCloser) 
 	// input
 	write(Frame{Type: FrameInput, StreamID: "s1", Data: []byte("xyz")})
 	waitUntilRouter(t, time.Second, func() bool {
-		return len(mgr.sessions["sess-1"].writes) == 1
+		return len(mgr.writesFor("sess-1")) == 1
 	})
-	if got := string(mgr.sessions["sess-1"].writes[0]); got != "xyz" {
+	if got := string(mgr.writesFor("sess-1")[0]); got != "xyz" {
 		t.Fatalf("unexpected write: %q", got)
 	}
 
 	// resize
 	write(Frame{Type: FrameResize, StreamID: "s1", Cols: 120, Rows: 40})
 	waitUntilRouter(t, time.Second, func() bool {
-		return len(resized) >= 2
+		return len(getResized()) >= 2
 	})
-	if resized[len(resized)-1] != [2]int{120, 40} {
-		t.Fatalf("unexpected resize: %v", resized)
+	if got := getResized(); got[len(got)-1] != [2]int{120, 40} {
+		t.Fatalf("unexpected resize: %v", got)
 	}
 
 	// list

@@ -77,6 +77,7 @@ type session struct {
 	peekOff    int64
 	cancel     context.CancelFunc // non-nil for func sessions
 	closeInput func(error)
+	resize     ResizeFunc // non-nil for in-process interactive sessions
 }
 
 // RunOpts controls how a session is created.
@@ -184,11 +185,38 @@ func (m *Manager) CreateFunc(parentCtx context.Context, name string, timeout tim
 	return info, nil
 }
 
+// InteractiveOptions controls an in-process interactive session. A zero
+// Timeout leaves the session lifetime entirely under parentCtx. Resize is kept
+// by the Manager so it survives transport detach/reconnect cycles.
+type InteractiveOptions struct {
+	Timeout   time.Duration
+	StripANSI bool
+	Resize    ResizeFunc
+}
+
 // CreateInteractiveFunc starts an in-process session that accepts input through
 // Manager.Write and captures output in the same buffer used by PTY sessions.
+// It retains the historical behavior where a non-positive timeout uses
+// DefaultTimeout. New resident sessions should use CreateInteractiveFuncWithOptions.
 func (m *Manager) CreateInteractiveFunc(parentCtx context.Context, name, command string, timeout time.Duration, stripANSI bool, fn func(ctx context.Context, r io.Reader, w io.Writer) error) (Info, error) {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
+	}
+	return m.CreateInteractiveFuncWithOptions(parentCtx, name, command, InteractiveOptions{
+		Timeout:   timeout,
+		StripANSI: stripANSI,
+	}, fn)
+}
+
+// CreateInteractiveFuncWithOptions starts an in-process interactive session.
+// Unlike the compatibility wrapper, Timeout == 0 means no manager-imposed
+// deadline; cancellation then comes only from parentCtx, Kill, or Shutdown.
+func (m *Manager) CreateInteractiveFuncWithOptions(parentCtx context.Context, name, command string, opts InteractiveOptions, fn func(ctx context.Context, r io.Reader, w io.Writer) error) (Info, error) {
+	if fn == nil {
+		return Info{}, errors.New("interactive function is nil")
+	}
+	if opts.Timeout < 0 {
+		return Info{}, errors.New("interactive timeout must not be negative")
 	}
 	if name == "" {
 		name = "interactive"
@@ -202,7 +230,7 @@ func (m *Manager) CreateInteractiveFunc(parentCtx context.Context, name, command
 		return Info{}, err
 	}
 
-	buf, err := m.newBuffer("", stripANSI)
+	buf, err := m.newBuffer("", opts.StripANSI)
 	if err != nil {
 		return Info{}, err
 	}
@@ -210,7 +238,15 @@ func (m *Manager) CreateInteractiveFunc(parentCtx context.Context, name, command
 	if parentCtx == nil {
 		parentCtx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(parentCtx, timeout)
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+	)
+	if opts.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(parentCtx, opts.Timeout)
+	} else {
+		ctx, cancel = context.WithCancel(parentCtx)
+	}
 	pr, pw := io.Pipe()
 
 	startedAt := time.Now()
@@ -230,6 +266,7 @@ func (m *Manager) CreateInteractiveFunc(parentCtx context.Context, name, command
 		input:  pw,
 		done:   make(chan struct{}),
 		cancel: cancel,
+		resize: opts.Resize,
 		closeInput: func(err error) {
 			_ = pr.CloseWithError(err)
 			_ = pw.CloseWithError(err)
@@ -874,6 +911,10 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 	}
 	m.mu.Lock()
 	s := m.resolve(id)
+	var resize ResizeFunc
+	if s != nil {
+		resize = s.resize
+	}
 	m.mu.Unlock()
 	if s == nil {
 		return fmt.Errorf("no such session: %s", id)
@@ -885,6 +926,11 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 	}
 	if s.pty == nil {
 		if s.input != nil {
+			if resize != nil {
+				if err := callResize(resize, cols, rows); err != nil {
+					return err
+				}
+			}
 			infoCopy, _ := m.touchSession(id, 0)
 			m.emit(Event{Action: EventSessionUpdated, Info: infoCopy})
 			return nil
@@ -897,6 +943,16 @@ func (m *Manager) Resize(id string, cols, rows int) error {
 		m.emit(Event{Action: EventSessionUpdated, Info: infoCopy})
 	}
 	return err
+}
+
+func callResize(resize ResizeFunc, cols, rows int) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("resize callback panic: %v", recovered)
+		}
+	}()
+	resize(cols, rows)
+	return nil
 }
 
 func (m *Manager) Wait(ctx context.Context, id string, timeout time.Duration) (Info, error) {

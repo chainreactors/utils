@@ -180,13 +180,12 @@ func (r *Router) open(ctx context.Context, frame Frame, send func(Frame)) {
 	}
 
 	info := result.Info
-	r.releaseStream(frame.StreamID, true)
+	r.releaseStream(frame.StreamID, false)
 	if result.Resize != nil {
 		r.mu.Lock()
 		r.resizers[info.ID] = result.Resize
 		r.mu.Unlock()
 	}
-	r.resizeSession(frame.StreamID, info.ID, frame.Cols, frame.Rows, send)
 	send(Frame{
 		Type:      FrameOpened,
 		StreamID:  frame.StreamID,
@@ -196,6 +195,7 @@ func (r *Router) open(ctx context.Context, frame Frame, send func(Frame)) {
 		Session:   &info,
 	})
 	r.monitor(ctx, frame.StreamID, info.ID, 0, send)
+	r.resizeSession(frame.StreamID, info.ID, frame.Cols, frame.Rows, send)
 }
 
 func (r *Router) attach(ctx context.Context, frame Frame, send func(Frame)) {
@@ -231,7 +231,6 @@ func (r *Router) attachExisting(ctx context.Context, frame Frame, info Info, sen
 	}
 
 	r.releaseStream(frame.StreamID, false)
-	r.resizeSession(frame.StreamID, info.ID, frame.Cols, frame.Rows, send)
 	send(Frame{
 		Type:      FrameAttached,
 		StreamID:  frame.StreamID,
@@ -244,6 +243,7 @@ func (r *Router) attachExisting(ctx context.Context, frame Frame, info Info, sen
 		send(Frame{Type: FrameOutput, StreamID: frame.StreamID, SessionID: info.ID, Data: output})
 	}
 	r.monitor(ctx, frame.StreamID, info.ID, offset, send)
+	r.resizeSession(frame.StreamID, info.ID, frame.Cols, frame.Rows, send)
 }
 
 func (r *Router) detach(frame Frame, send func(Frame)) {

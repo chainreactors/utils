@@ -704,3 +704,56 @@ func TestLabelFromCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestInteractiveOptionsZeroTimeoutUsesParentLifetime(t *testing.T) {
+	mgr := NewManager()
+	ctx, cancel := context.WithCancel(context.Background())
+	info, err := mgr.CreateInteractiveFuncWithOptions(ctx, "resident", "resident", InteractiveOptions{}, func(ctx context.Context, _ io.Reader, _ io.Writer) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	if err != nil {
+		t.Fatalf("CreateInteractiveFuncWithOptions: %v", err)
+	}
+
+	select {
+	case <-mgr.Done(info.ID):
+		t.Fatal("zero-timeout interactive session ended before parent cancellation")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	cancel()
+	select {
+	case <-mgr.Done(info.ID):
+	case <-time.After(time.Second):
+		t.Fatal("interactive session did not stop after parent cancellation")
+	}
+}
+
+func TestInteractiveResizeCallbackOwnedByManager(t *testing.T) {
+	mgr := NewManager()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resized := make(chan [2]int, 1)
+	info, err := mgr.CreateInteractiveFuncWithOptions(ctx, "resident", "resident", InteractiveOptions{
+		Resize: func(cols, rows int) { resized <- [2]int{cols, rows} },
+	}, func(ctx context.Context, _ io.Reader, _ io.Writer) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	if err != nil {
+		t.Fatalf("CreateInteractiveFuncWithOptions: %v", err)
+	}
+	if err := mgr.Resize(info.ID, 120, 40); err != nil {
+		t.Fatalf("Resize: %v", err)
+	}
+	select {
+	case got := <-resized:
+		if got != [2]int{120, 40} {
+			t.Fatalf("resize = %v, want [120 40]", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("manager did not invoke interactive resize callback")
+	}
+}

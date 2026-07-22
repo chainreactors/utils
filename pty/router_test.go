@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -19,6 +20,7 @@ type fakeSession struct {
 }
 
 type fakeManager struct {
+	mu       sync.Mutex
 	sessions map[string]*fakeSession
 }
 
@@ -56,6 +58,8 @@ func (m *fakeManager) Get(id string) (Info, bool) {
 }
 
 func (m *fakeManager) Write(id string, data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
 		return errors.New("missing session")
@@ -64,7 +68,15 @@ func (m *fakeManager) Write(id string, data []byte) error {
 	return nil
 }
 
+func (m *fakeManager) writesFor(id string) [][]byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([][]byte(nil), m.sessions[id].writes...)
+}
+
 func (m *fakeManager) Resize(id string, cols, rows int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
 		return errors.New("missing session")
@@ -74,6 +86,8 @@ func (m *fakeManager) Resize(id string, cols, rows int) error {
 }
 
 func (m *fakeManager) Kill(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	s := m.sessions[id]
 	if s == nil {
 		return errors.New("missing session")
@@ -82,6 +96,12 @@ func (m *fakeManager) Kill(id string) error {
 	s.info.State = StateKilled
 	close(s.done)
 	return nil
+}
+
+func (m *fakeManager) killedFlag(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sessions[id].killed
 }
 
 func (m *fakeManager) SnapshotBytes(id string, n int) ([]byte, int64, error) {
@@ -121,14 +141,24 @@ func TestRouterServeWithNetPipe(t *testing.T) {
 	defer cancel()
 
 	mgr := newFakeManager()
-	var resized [][2]int
+	var (
+		resizeMu sync.Mutex
+		resized  [][2]int
+	)
+	getResized := func() [][2]int {
+		resizeMu.Lock()
+		defer resizeMu.Unlock()
+		return append([][2]int(nil), resized...)
+	}
 
 	router := NewRouter(mgr, WithOpener("repl", func(_ context.Context, spec OpenSpec) (OpenResult, error) {
 		info := mgr.add("session-1", spec.Name, []byte("snapshot\n"))
 		return OpenResult{
 			Info: info,
 			Resize: func(cols, rows int) {
+				resizeMu.Lock()
 				resized = append(resized, [2]int{cols, rows})
+				resizeMu.Unlock()
 			},
 		}, nil
 	}))
@@ -169,23 +199,23 @@ func TestRouterServeWithNetPipe(t *testing.T) {
 
 	writeFrame(Frame{Type: FrameInput, StreamID: "local", Data: []byte("abc")})
 	waitUntilRouter(t, time.Second, func() bool {
-		return len(mgr.sessions["session-1"].writes) == 1
+		return len(mgr.writesFor("session-1")) == 1
 	})
-	if got := string(mgr.sessions["session-1"].writes[0]); got != "abc" {
+	if got := string(mgr.writesFor("session-1")[0]); got != "abc" {
 		t.Fatalf("unexpected write: %q", got)
 	}
 
 	writeFrame(Frame{Type: FrameResize, StreamID: "local", Cols: 120, Rows: 40})
 	waitUntilRouter(t, time.Second, func() bool {
-		return len(resized) == 2
+		return len(getResized()) == 2
 	})
-	if len(resized) != 2 || resized[1] != [2]int{120, 40} {
-		t.Fatalf("resize control not called: %+v", resized)
+	if got := getResized(); len(got) != 2 || got[1] != [2]int{120, 40} {
+		t.Fatalf("resize control not called: %+v", got)
 	}
 
 	writeFrame(Frame{Type: FrameDetach, StreamID: "local"})
 	readFrameJSON(FrameDetached)
-	if mgr.sessions["session-1"].killed {
+	if mgr.killedFlag("session-1") {
 		t.Fatal("detach killed session")
 	}
 
@@ -223,7 +253,7 @@ func TestRouterListAttachAndKill(t *testing.T) {
 	}
 
 	router.Handle(context.Background(), Frame{Type: FrameKill, StreamID: "term"}, send)
-	if !mgr.sessions["session-1"].killed {
+	if !mgr.killedFlag("session-1") {
 		t.Fatal("kill did not call manager")
 	}
 }
@@ -255,7 +285,7 @@ func TestRouterSingletonOpenReusesRunningSession(t *testing.T) {
 	if openCount != 1 {
 		t.Fatalf("singleton open called opener again: %d", openCount)
 	}
-	if mgr.sessions["session-1"].killed {
+	if mgr.killedFlag("session-1") {
 		t.Fatal("singleton reattach killed the existing session")
 	}
 }
