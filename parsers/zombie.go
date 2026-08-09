@@ -100,14 +100,23 @@ type ZombieInput struct {
 }
 
 type ZombieResult struct {
-	IP       string            `json:"ip"`
-	Port     string            `json:"port"`
-	Service  string            `json:"service"`
-	Username string            `json:"username"`
-	Password string            `json:"password"`
-	Scheme   string            `json:"scheme"`
-	Mod      ZombieTaskMod     `json:"mod"`
-	Param    map[string]string `json:"param,omitempty"`
+	IP         string            `json:"ip"`
+	Port       string            `json:"port"`
+	Service    string            `json:"service"`
+	Username   string            `json:"username"`
+	Password   string            `json:"password"`
+	Scheme     string            `json:"scheme"`
+	Mod        ZombieTaskMod     `json:"mod"`
+	Param      map[string]string `json:"param,omitempty"`
+	OK         bool              `json:"ok"`
+	ErrString  string            `json:"error,omitempty"`
+	Vulns      Vulns             `json:"vulns,omitempty"`
+	Extracteds Extracteds        `json:"extracteds,omitempty"`
+	Loot       map[string][]byte `json:"loot,omitempty"`
+}
+
+func (r *ZombieResult) Success() bool {
+	return r != nil && r.OK
 }
 
 func (r *ZombieResult) String() string {
@@ -139,7 +148,13 @@ func (r *ZombieResult) Full() string {
 	if len(r.Param) != 0 {
 		s.WriteString(" " + fmt.Sprintf("%v", r.Param))
 	}
-	if r.Mod == ZombieModCheck {
+	if !r.OK {
+		s.WriteString(", " + r.Service + " login failed")
+		if r.ErrString != "" {
+			s.WriteString(", " + r.ErrString)
+		}
+		s.WriteString("\n")
+	} else if r.Mod == ZombieModCheck {
 		s.WriteString(", " + r.Service + " maybe honeypot or unauth!!!\n")
 	} else {
 		s.WriteString(", " + r.Service + " login successfully\n")
