@@ -22,6 +22,12 @@ type Options struct {
 	NewCaFunc         func() (cert.CA, error)
 	Upstream          string
 	LogFilePath       string
+	// Dialer, when set, is installed as the interceptor's custom dialer BEFORE
+	// the plain-HTTP transport is built, so it applies to plain HTTP as well as
+	// HTTPS/CONNECT flows. SetDialer, called after NewProxy, only affects the
+	// tunneled paths because the plain-HTTP transport.DialContext is bound once
+	// at construction. Prefer this field when the dialer must cover every flow.
+	Dialer func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 type Proxy struct {
@@ -30,7 +36,7 @@ type Proxy struct {
 	Addons  []Addon
 
 	entry            *entry
-	interceptor         *interceptor
+	interceptor      *interceptor
 	webSocketHandler *webSocketHandler
 	shouldIntercept  func(req *http.Request) bool
 	upstreamProxy    func(req *http.Request) (*url.URL, error)
@@ -49,6 +55,13 @@ func NewProxy(opts *Options) (*Proxy, error) {
 		Opts:    opts,
 		Version: "1.9.2",
 		Addons:  make([]Addon, 0),
+	}
+
+	// Install the custom dialer before newInterceptor so the plain-HTTP
+	// transport's DialContext is bound to it too (SetDialer, being post-
+	// construction, cannot retro-apply to that transport).
+	if opts.Dialer != nil {
+		proxy.customDialer = opts.Dialer
 	}
 
 	proxy.entry = newEntry(proxy)

@@ -80,6 +80,12 @@ type ConnContext struct {
 	ServerConn *ServerConn   `json:"serverConn"`
 	Intercept  bool          `json:"intercept"` // Indicates whether to parse HTTPS
 	FlowCount  atomic.Uint32 `json:"-"`         // Number of HTTP requests made on the same connection
+	// ProxyAuthUser is the username from this connection's Proxy-Authorization
+	// (Basic) credential, captured once when the connection is opened. It lets
+	// addons attribute every flow on the connection to the client that opened
+	// it — callers can inject an identifier as the proxy username. Empty when no
+	// credential was presented. Never used for authorization here.
+	ProxyAuthUser string `json:"-"`
 
 	proxy              *Proxy
 	closeAfterResponse bool                        // after http response, http server will close the connection

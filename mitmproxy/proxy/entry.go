@@ -3,9 +3,11 @@ package proxy
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +16,24 @@ import (
 )
 
 const peekTimeout = 200 * time.Millisecond
+
+// parseProxyAuthUser returns the username from a "Basic" Proxy-Authorization
+// header value, or "" when the value is absent, not Basic, or malformed. Only
+// the username is returned; the password (if any) is ignored.
+func parseProxyAuthUser(header string) string {
+	const prefix = "basic "
+	if len(header) < len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
+		return ""
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(header[len(prefix):]))
+	if err != nil {
+		return ""
+	}
+	if i := strings.IndexByte(string(decoded), ':'); i >= 0 {
+		return string(decoded[:i])
+	}
+	return string(decoded)
+}
 
 // wrap tcpListener for remote client
 type wrapListener struct {
@@ -197,6 +217,18 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
+	// Capture the proxy-auth username as a per-connection tag so addons can
+	// attribute every flow on this connection to the client that opened it
+	// (e.g. an injected tool-call id). This is observational only — it never
+	// rejects — and the credential is stripped before the request is forwarded
+	// so it does not leak upstream.
+	if connCtx, ok := req.Context().Value(connContextKey).(*ConnContext); ok && connCtx.ProxyAuthUser == "" {
+		if user := parseProxyAuthUser(req.Header.Get("Proxy-Authorization")); user != "" {
+			connCtx.ProxyAuthUser = user
+		}
+	}
+	req.Header.Del("Proxy-Authorization")
+
 	// proxy via connect tunnel
 	if req.Method == "CONNECT" {
 		e.handleConnect(res, req)
