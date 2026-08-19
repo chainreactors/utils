@@ -30,9 +30,10 @@ const (
 )
 
 const (
-	DefaultTimeout = 30 * time.Minute
-	killGrace      = 5 * time.Second
-	shutdownGrace  = 2 * time.Second
+	DefaultTimeout   = 30 * time.Minute
+	killGrace        = 5 * time.Second
+	shutdownGrace    = 2 * time.Second
+	outputDrainGrace = 100 * time.Millisecond
 )
 
 type Info struct {
@@ -516,6 +517,14 @@ func (m *Manager) supervise(s *session, timeout time.Duration) {
 		state = StateKilled
 	}
 
+	if s.pumpDone != nil {
+		drainTimer := time.NewTimer(outputDrainGrace)
+		select {
+		case <-s.pumpDone:
+			drainTimer.Stop()
+		case <-drainTimer.C:
+		}
+	}
 	if s.pty != nil {
 		s.pty.Close()
 	}
