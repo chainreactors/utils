@@ -371,6 +371,9 @@ func TestDoneChannel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Done channel not closed")
 	}
+	if output := mgr.PeekOrEmpty(info.ID, 30); !strings.Contains(output, "fast") {
+		t.Fatalf("Done closed before stdout was drained: %q", output)
+	}
 
 	// Done on unknown ID returns closed channel
 	select {

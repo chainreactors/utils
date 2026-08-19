@@ -34,6 +34,9 @@ func startPTY(cmd *exec.Cmd) (*ptyHandle, error) {
 		_ = p.Close()
 		return nil, err
 	}
+	if unixPTY, ok := p.(gopty.UnixPty); ok {
+		_ = unixPTY.Slave().Close()
+	}
 	return &ptyHandle{pty: p, cmd: c}, nil
 }
 
@@ -73,4 +76,3 @@ func (p *ptyHandle) Resize(cols, rows int) error {
 	}
 	return p.pty.Resize(cols, rows)
 }
-
