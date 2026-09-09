@@ -144,9 +144,10 @@ func (c *wrapServerConn) Close() error {
 		addon.ServerDisconnected(c.connCtx)
 	}
 
-	if !c.connCtx.ClientConn.Tls {
-		c.connCtx.ClientConn.Conn.(*wrapClientConn).Conn.(*net.TCPConn).CloseRead()
-	} else {
+	// HTTP upstream connections may end independently of downstream
+	// keep-alive requests. Closing the client's read side here races the next
+	// request when a streamed response has already flushed its last bytes.
+	if c.connCtx.ClientConn.Tls {
 		// if keep-alive connection close
 		if !c.connCtx.closeAfterResponse {
 			c.connCtx.ClientConn.Conn.Close()
@@ -292,6 +293,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 func (e *entry) establishConnection(res http.ResponseWriter, f *Flow) (net.Conn, error) {
 	cconn, _, err := res.(http.Hijacker).Hijack()
 	if err != nil {
+		f.Error = err
 		for _, addon := range e.proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}
@@ -301,6 +303,7 @@ func (e *entry) establishConnection(res http.ResponseWriter, f *Flow) (net.Conn,
 	_, err = io.WriteString(cconn, "HTTP/1.1 200 Connection Established\r\n\r\n")
 	if err != nil {
 		cconn.Close()
+		f.Error = err
 		for _, addon := range e.proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}
@@ -329,6 +332,7 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 
 	conn, err := proxy.getUpstreamConn(req.Context(), req)
 	if err != nil {
+		f.Error = err
 		for _, addon := range proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}
@@ -446,6 +450,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 
 	conn, err := proxy.interceptor.httpsDial(req.Context(), req)
 	if err != nil {
+		f.Error = err
 		for _, addon := range proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}

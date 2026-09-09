@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -506,6 +507,10 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 		"method": req.Method,
 	})
 
+	f := newFlow()
+	f.Request = newRequest(req)
+	f.ConnContext = req.Context().Value(connContextKey).(*ConnContext)
+
 	reply := func(response *Response, body io.Reader) {
 		if response.Header != nil {
 			for key, value := range response.Header {
@@ -530,10 +535,14 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 			for {
 				n, err := r.Read(buf)
 				if n > 0 {
-					if _, werr := res.Write(buf[:n]); werr != nil {
+					if written, werr := res.Write(buf[:n]); werr != nil {
 						return werr
+					} else if written != n {
+						return io.ErrShortWrite
 					}
-					flusher.Flush()
+					if flusher != nil {
+						flusher.Flush()
+					}
 				}
 				if err != nil {
 					if err == io.EOF {
@@ -548,33 +557,36 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 			err := copyStream(body)
 			if err != nil {
 				logErr(log, err)
+				f.Error = err
+				return
 			}
 		}
 		if response.BodyReader != nil {
 			err := copyStream(response.BodyReader)
 			if err != nil {
 				logErr(log, err)
+				f.Error = err
+				return
 			}
 		}
 		if len(response.Body) > 0 {
 			_, err := res.Write(response.Body)
 			if err != nil {
 				logErr(log, err)
+				f.Error = err
+				return
 			}
 		}
 	}
 
-	// when addons panic
+	defer f.finish()
+	// Recover before finishing so terminal observers see the failure.
 	defer func() {
 		if err := recover(); err != nil {
+			f.Error = fmt.Errorf("proxy panic: %v", err)
 			log.Warnf("Recovered: %v\n", err)
 		}
 	}()
-
-	f := newFlow()
-	f.Request = newRequest(req)
-	f.ConnContext = req.Context().Value(connContextKey).(*ConnContext)
-	defer f.finish()
 
 	f.ConnContext.FlowCount.Add(1)
 
@@ -596,6 +608,7 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 		reqBuf, r, err := helper.ReaderToBuffer(req.Body, proxy.Opts.StreamLargeBodies)
 		reqBody = r
 		if err != nil {
+			f.Error = err
 			for _, addon := range proxy.Addons {
 				addon.RequestError(f, err)
 			}
@@ -628,6 +641,7 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 	proxyReqCtx := context.WithValue(req.Context(), proxyReqCtxKey, req)
 	proxyReq, err := http.NewRequestWithContext(proxyReqCtx, f.Request.Method, f.Request.URL.String(), reqBody)
 	if err != nil {
+		f.Error = err
 		for _, addon := range proxy.Addons {
 			addon.RequestError(f, err)
 		}
@@ -654,6 +668,7 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 	} else {
 		if f.ConnContext.ServerConn == nil && f.ConnContext.dialFn != nil {
 			if err := f.ConnContext.dialFn(req.Context()); err != nil {
+				f.Error = err
 				for _, addon := range proxy.Addons {
 					addon.RequestError(f, err)
 				}
@@ -670,6 +685,7 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 	}
 	if err != nil {
 		logErr(log, err)
+		f.Error = err
 		for _, addon := range proxy.Addons {
 			addon.RequestError(f, err)
 		}
@@ -699,7 +715,9 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 	}
 
 	// detect SSE response, force stream mode
-	isSSE := strings.Contains(f.Response.Header.Get("Content-Type"), "text/event-stream")
+	// An explicitly streamed flow observes raw bytes and does not retain parsed
+	// SSE event history. Automatic SSE parsing remains available to other addons.
+	isSSE := !f.Stream && strings.Contains(f.Response.Header.Get("Content-Type"), "text/event-stream")
 	if isSSE {
 		f.Stream = true
 		f.SSE = newSSEData()
@@ -718,6 +736,7 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 		resBuf, r, err := helper.ReaderToBuffer(proxyRes.Body, proxy.Opts.StreamLargeBodies)
 		resBody = r
 		if err != nil {
+			f.Error = err
 			for _, addon := range proxy.Addons {
 				addon.RequestError(f, err)
 			}
