@@ -212,8 +212,11 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if e.proxy.authProxy != nil {
 		b, err := e.proxy.authProxy(res, req)
 		if !b {
-			log.Errorf("Proxy authentication failed: %s", err.Error())
-			httpError(res, "", http.StatusProxyAuthRequired)
+			log.Errorf("Proxy authentication failed: %v", err)
+			// Clients such as curl may accept an HTTP error response without
+			// failing the process. Always return an explicit denial body. Auth
+			// callback errors can contain secrets and stay in server diagnostics.
+			httpError(res, "Proxy authentication required; request was not forwarded. Use the configured proxy credentials or inherit the execution environment's proxy settings.", http.StatusProxyAuthRequired)
 			return
 		}
 	}
