@@ -110,7 +110,7 @@ type Framework struct {
 	Froms       map[From]bool `json:"froms,omitempty"`
 	Tags        []string      `json:"tags,omitempty"`
 	IsFocus     bool          `json:"is_focus,omitempty"`
-	IsRejected  bool          `json:"is_rejected,omitempty"` // 被判定层(如 fingers 的 jev)判为误报, 保留条目但调用方应过滤
+	IsRejected  bool          `json:"is_rejected,omitempty"` // 被判定层(如 fingers 的 judge)判为误报, 保留条目但调用方应过滤
 	MatchDetail *MatchDetail  `json:"matcher,omitempty"`
 	*Attributes `json:"attributes,omitempty"`
 }
