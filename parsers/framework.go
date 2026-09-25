@@ -119,6 +119,12 @@ type Framework struct {
 // github.com/chainreactors/fingers/judge). Rejected and duplicate entries are
 // kept so callers can explain them; Frameworks.Accepted drops them.
 type Judgement struct {
+	// Verdict is what the evidence shows: "declared" (the response names the
+	// product in a header or cookie, decided without a model), "running",
+	// "mentioned" (only in the page's text) or "insufficient".
+	Verdict  string   `json:"verdict,omitempty"`
+	Evidence []string `json:"evidence,omitempty"` // the response excerpts the verdict was reached on
+
 	Layer      string  `json:"layer,omitempty"`      // role in the stack: cdn_or_waf, web_server, application, ...
 	Confidence float64 `json:"confidence,omitempty"` // probability that the product serves this response
 	Rejected   bool    `json:"rejected,omitempty"`   // a false positive: only mentioned in the page, or absent

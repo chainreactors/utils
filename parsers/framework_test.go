@@ -7,7 +7,7 @@ import (
 
 func TestFrameworksJudgement(t *testing.T) {
 	fs := Frameworks{}
-	fs.Add(&Framework{Name: "nginx", Judge: &Judgement{Layer: "web_server", Confidence: 0.9}})
+	fs.Add(&Framework{Name: "nginx", Judge: &Judgement{Verdict: "running", Evidence: []string{"Server: nginx"}, Layer: "web_server", Confidence: 0.9}})
 	fs.Add(&Framework{Name: "jenkins", Judge: &Judgement{Layer: "application", Primary: true}})
 	fs.Add(&Framework{Name: "tomcat", Judge: &Judgement{Rejected: true}})
 	fs.Add(&Framework{Name: "apache-tomcat", Judge: &Judgement{Duplicate: true}})
@@ -26,7 +26,7 @@ func TestFrameworksJudgement(t *testing.T) {
 		t.Fatal(err)
 	}
 	var back Framework
-	if err := json.Unmarshal(data, &back); err != nil || back.Judge == nil || back.Judge.Layer != "web_server" || back.Judge.Confidence != 0.9 {
+	if err := json.Unmarshal(data, &back); err != nil || back.Judge == nil || back.Judge.Layer != "web_server" || back.Judge.Verdict != "running" || len(back.Judge.Evidence) != 1 || back.Judge.Confidence != 0.9 {
 		t.Fatalf("round trip %s -> %+v", data, back.Judge)
 	}
 	if data, _ := json.Marshal(fs["unjudged"]); string(data) != `{"name":"unjudged"}` {
