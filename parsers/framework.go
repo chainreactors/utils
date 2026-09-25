@@ -110,9 +110,21 @@ type Framework struct {
 	Froms       map[From]bool `json:"froms,omitempty"`
 	Tags        []string      `json:"tags,omitempty"`
 	IsFocus     bool          `json:"is_focus,omitempty"`
-	IsRejected  bool          `json:"is_rejected,omitempty"` // 被判定层(如 fingers 的 judge)判为误报, 保留条目但调用方应过滤
+	Judge       *Judgement    `json:"judge,omitempty"` // 判定层(fingers/judge)的结论, nil 表示未经判定
 	MatchDetail *MatchDetail  `json:"matcher,omitempty"`
 	*Attributes `json:"attributes,omitempty"`
+}
+
+// Judgement is a judgement layer's verdict on one framework (see
+// github.com/chainreactors/fingers/judge). Rejected and duplicate entries are
+// kept so callers can explain them; Frameworks.Accepted drops them.
+type Judgement struct {
+	Layer      string  `json:"layer,omitempty"`      // role in the stack: cdn_or_waf, web_server, application, ...
+	Confidence float64 `json:"confidence,omitempty"` // probability that the product serves this response
+	Rejected   bool    `json:"rejected,omitempty"`   // a false positive: only mentioned in the page, or absent
+	Duplicate  bool    `json:"duplicate,omitempty"`  // another engine's spelling of a product kept under another name
+	Primary    bool    `json:"primary,omitempty"`    // the application the page belongs to
+	Recalled   bool    `json:"recalled,omitempty"`   // missed by the rules, found by name and confirmed
 }
 
 // MatchDetail describes which rule and matcher produced a hit.
@@ -228,6 +240,9 @@ func (fs Frameworks) Add(other *Framework) bool {
 		}
 		frame.Tags = iutils.StringsUnique(append(frame.Tags, other.Tags...))
 		frame.UpdateAttributes(other.Attributes)
+		if frame.Judge == nil {
+			frame.Judge = other.Judge
+		}
 		return false
 	} else {
 		fs[other.Name] = other
@@ -337,4 +352,26 @@ func (fs Frameworks) HasFrom(from string) bool {
 		}
 	}
 	return false
+}
+
+// Accepted returns the frameworks without judged false positives and
+// duplicate spellings. Frameworks that were not judged are kept.
+func (fs Frameworks) Accepted() Frameworks {
+	out := make(Frameworks, len(fs))
+	for k, f := range fs {
+		if f != nil && (f.Judge == nil || !f.Judge.Rejected && !f.Judge.Duplicate) {
+			out[k] = f
+		}
+	}
+	return out
+}
+
+// Primary returns the framework judged to be the page's application, or nil.
+func (fs Frameworks) Primary() *Framework {
+	for _, f := range fs {
+		if f != nil && f.Judge != nil && f.Judge.Primary {
+			return f
+		}
+	}
+	return nil
 }
