@@ -115,24 +115,22 @@ type Framework struct {
 	*Attributes `json:"attributes,omitempty"`
 }
 
-// Judgement is a judgement layer's verdict on one framework (see
-// github.com/chainreactors/fingers/judge). Rejected and duplicate entries are
-// kept so callers can explain them; Frameworks.Accepted drops them.
+// Judgement is a judgement layer's ruling on the claim that a framework
+// produced the response (see github.com/chainreactors/fingers/judge).
+// Rejected and duplicate entries are kept so callers can explain them;
+// Frameworks.Accepted drops them.
 type Judgement struct {
-	// Verdict is what the evidence shows: "declared" (the response names the
-	// product in a header or cookie, decided without a model), "absent" (a
-	// protocol feature the response head does not show), "running",
-	// "mentioned" (only in the page's text), "unrelated" (the rule matched
-	// text that has nothing to do with the product) or "insufficient".
-	Verdict  string   `json:"verdict,omitempty"`
-	Evidence []string `json:"evidence,omitempty"` // the response excerpts the verdict was reached on
-
-	Layer      string  `json:"layer,omitempty"`      // role in the stack: cdn_or_waf, web_server, application, ...
-	Confidence float64 `json:"confidence,omitempty"` // probability that the product serves this response
-	Rejected   bool    `json:"rejected,omitempty"`   // a false positive: only mentioned in the page, or absent
-	Duplicate  bool    `json:"duplicate,omitempty"`  // another engine's spelling of a product kept under another name
-	Primary    bool    `json:"primary,omitempty"`    // the application the page belongs to
-	Recalled   bool    `json:"recalled,omitempty"`   // missed by the rules, found by name and confirmed
+	// Verdict is the option the claim was ruled with, such as "declared"
+	// (the response names the product in a header or cookie, decided without
+	// a model), "running", "mentioned" or "unrelated".
+	Verdict string `json:"verdict,omitempty"`
+	// Outcome is what Verdict means for the claim: "holds", "refuted" or
+	// "insufficient" (the evidence decides neither way).
+	Outcome    string   `json:"outcome,omitempty"`
+	Confidence float64  `json:"confidence,omitempty"` // the provider's confidence in Verdict; 1 for code's rulings
+	Evidence   []string `json:"evidence,omitempty"`   // the response excerpts the claim was ruled on
+	Rejected   bool     `json:"rejected,omitempty"`   // the action taken: not reported (refuted, or insufficient where so configured)
+	Duplicate  bool     `json:"duplicate,omitempty"`  // another engine's spelling of a product kept under another name
 }
 
 // MatchDetail describes which rule and matcher produced a hit.
@@ -372,14 +370,4 @@ func (fs Frameworks) Accepted() Frameworks {
 		}
 	}
 	return out
-}
-
-// Primary returns the framework judged to be the page's application, or nil.
-func (fs Frameworks) Primary() *Framework {
-	for _, f := range fs {
-		if f != nil && f.Judge != nil && f.Judge.Primary {
-			return f
-		}
-	}
-	return nil
 }
