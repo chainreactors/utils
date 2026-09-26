@@ -120,8 +120,10 @@ type Framework struct {
 // kept so callers can explain them; Frameworks.Accepted drops them.
 type Judgement struct {
 	// Verdict is what the evidence shows: "declared" (the response names the
-	// product in a header or cookie, decided without a model), "running",
-	// "mentioned" (only in the page's text) or "insufficient".
+	// product in a header or cookie, decided without a model), "absent" (a
+	// protocol feature the response head does not show), "running",
+	// "mentioned" (only in the page's text), "unrelated" (the rule matched
+	// text that has nothing to do with the product) or "insufficient".
 	Verdict  string   `json:"verdict,omitempty"`
 	Evidence []string `json:"evidence,omitempty"` // the response excerpts the verdict was reached on
 
