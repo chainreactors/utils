@@ -120,14 +120,14 @@ type Framework struct {
 // Rejected and duplicate entries are kept so callers can explain them;
 // Frameworks.Accepted drops them.
 type Judgement struct {
-	// Verdict is the option the claim was ruled with, such as "declared"
+	// Option is the claim option the ruling picked, such as "declared"
 	// (the response names the product in a header or cookie, decided without
 	// a model), "running", "mentioned" or "unrelated".
-	Verdict string `json:"verdict,omitempty"`
-	// Outcome is what Verdict means for the claim: "holds", "refuted" or
+	Option string `json:"option,omitempty"`
+	// Outcome is what Option means for the claim: "holds", "refuted" or
 	// "insufficient" (the evidence decides neither way).
 	Outcome    string   `json:"outcome,omitempty"`
-	Confidence float64  `json:"confidence,omitempty"` // the provider's confidence in Verdict; 1 for code's rulings
+	Confidence float64  `json:"confidence,omitempty"` // the provider's confidence in Option; 1 for code's rulings
 	Evidence   []string `json:"evidence,omitempty"`   // the response excerpts the claim was ruled on
 	Rejected   bool     `json:"rejected,omitempty"`   // the action taken: not reported (refuted, or insufficient where so configured)
 	Duplicate  bool     `json:"duplicate,omitempty"`  // another engine's spelling of a product kept under another name
