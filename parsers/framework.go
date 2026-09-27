@@ -110,8 +110,27 @@ type Framework struct {
 	Froms       map[From]bool `json:"froms,omitempty"`
 	Tags        []string      `json:"tags,omitempty"`
 	IsFocus     bool          `json:"is_focus,omitempty"`
+	Judge       *Judgement    `json:"judge,omitempty"` // 判定层(fingers/judge)的结论, nil 表示未经判定
 	MatchDetail *MatchDetail  `json:"matcher,omitempty"`
 	*Attributes `json:"attributes,omitempty"`
+}
+
+// Judgement is a judgement layer's ruling on the claim that a framework
+// produced the response (see github.com/chainreactors/fingers/judge).
+// Rejected and duplicate entries are kept so callers can explain them;
+// Frameworks.Accepted drops them.
+type Judgement struct {
+	// Option is the claim option the ruling picked, such as "declared"
+	// (the response names the product in a header or cookie, decided without
+	// a model), "running", "mentioned" or "unrelated".
+	Option string `json:"option,omitempty"`
+	// Outcome is what Option means for the claim: "holds", "refuted" or
+	// "insufficient" (the evidence decides neither way).
+	Outcome    string   `json:"outcome,omitempty"`
+	Confidence float64  `json:"confidence,omitempty"` // the provider's confidence in Option; 1 for code's rulings
+	Evidence   []string `json:"evidence,omitempty"`   // the response excerpts the claim was ruled on
+	Rejected   bool     `json:"rejected,omitempty"`   // the action taken: not reported (refuted, or insufficient where so configured)
+	Duplicate  bool     `json:"duplicate,omitempty"`  // another engine's spelling of a product kept under another name
 }
 
 // MatchDetail describes which rule and matcher produced a hit.
@@ -227,6 +246,9 @@ func (fs Frameworks) Add(other *Framework) bool {
 		}
 		frame.Tags = iutils.StringsUnique(append(frame.Tags, other.Tags...))
 		frame.UpdateAttributes(other.Attributes)
+		if frame.Judge == nil {
+			frame.Judge = other.Judge
+		}
 		return false
 	} else {
 		fs[other.Name] = other
@@ -336,4 +358,16 @@ func (fs Frameworks) HasFrom(from string) bool {
 		}
 	}
 	return false
+}
+
+// Accepted returns the frameworks without judged false positives and
+// duplicate spellings. Frameworks that were not judged are kept.
+func (fs Frameworks) Accepted() Frameworks {
+	out := make(Frameworks, len(fs))
+	for k, f := range fs {
+		if f != nil && (f.Judge == nil || !f.Judge.Rejected && !f.Judge.Duplicate) {
+			out[k] = f
+		}
+	}
+	return out
 }
