@@ -89,6 +89,10 @@ type Spec struct {
 	BufferCap int
 	// OutputFile mirrors the diagnostic stream to a file.
 	OutputFile string
+	// Nonzero thresholds start mirroring only when the inline preview overflows.
+	// The retained prefix is written before any ring-buffer eviction.
+	OutputFileAfterBytes int
+	OutputFileAfterLines int
 	// StripANSI removes terminal control bytes from the ring buffer. It never
 	// affects Raw.
 	StripANSI bool

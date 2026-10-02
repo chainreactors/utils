@@ -1,8 +1,10 @@
 package proc
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -13,13 +15,19 @@ const DefaultBufferCap = 2 * 1024 * 1024 // 2MB
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\(B`)
 
 type OutputBuffer struct {
-	mu         sync.Mutex
-	buf        []byte
-	cap        int
-	baseOffset int64
-	onWrite    func([]byte)
-	file       *os.File // optional: tee writes to file alongside memory
-	stripANSI  bool
+	mu             sync.Mutex
+	buf            []byte
+	cap            int
+	baseOffset     int64
+	onWrite        func([]byte)
+	file           *os.File // optional: tee writes to file alongside memory
+	filePath       string
+	fileErr        error
+	fileOpened     bool
+	fileAfterBytes int
+	fileAfterLines int
+	outputLines    int
+	stripANSI      bool
 }
 
 func NewOutputBuffer(cap int) *OutputBuffer {
@@ -46,7 +54,7 @@ func NewOutputBufferWithFile(cap int, path string) (*OutputBuffer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open output file: %w", err)
 	}
-	b.file = f
+	b.file, b.filePath, b.fileOpened = f, path, true
 	return b, nil
 }
 
@@ -56,6 +64,27 @@ func (b *OutputBuffer) Write(p []byte) (int, error) {
 		p = ansiRe.ReplaceAll(p, nil)
 	}
 	b.mu.Lock()
+	b.outputLines += bytes.Count(p, []byte{'\n'})
+	lines := b.outputLines
+	if len(p) > 0 && p[len(p)-1] != '\n' {
+		lines++
+	}
+	if b.filePath != "" && !b.fileOpened && b.fileErr == nil &&
+		(len(b.buf)+len(p) > b.cap ||
+			(b.fileAfterBytes > 0 && len(b.buf)+len(p) > b.fileAfterBytes) ||
+			(b.fileAfterLines > 0 && lines > b.fileAfterLines)) {
+		b.fileErr = os.MkdirAll(filepath.Dir(b.filePath), 0700)
+		if b.fileErr == nil {
+			b.file, b.fileErr = os.OpenFile(b.filePath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
+		}
+		if b.fileErr == nil {
+			b.fileOpened = true
+			_, b.fileErr = b.file.Write(b.buf)
+		}
+	}
+	if b.file != nil && b.fileErr == nil {
+		_, b.fileErr = b.file.Write(p)
+	}
 	b.buf = append(b.buf, p...)
 	if len(b.buf) > b.cap {
 		excess := len(b.buf) - b.cap
@@ -63,9 +92,6 @@ func (b *OutputBuffer) Write(p []byte) (int, error) {
 		fresh := make([]byte, b.cap)
 		copy(fresh, b.buf[excess:])
 		b.buf = fresh
-	}
-	if b.file != nil {
-		_, _ = b.file.Write(p)
 	}
 	cb := b.onWrite
 	b.mu.Unlock()
@@ -79,9 +105,25 @@ func (b *OutputBuffer) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.file != nil {
-		b.file.Close()
+		if err := b.file.Close(); b.fileErr == nil {
+			b.fileErr = err
+		}
 		b.file = nil
 	}
+}
+
+// OutputFile reports only a complete mirror. A failed write must never produce
+// a reference claiming that the discarded prefix can be recovered from disk.
+func (b *OutputBuffer) OutputFile() (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.fileErr != nil {
+		return "", b.fileErr
+	}
+	if b.fileOpened {
+		return b.filePath, nil
+	}
+	return "", nil
 }
 
 func (b *OutputBuffer) TailLines(n int) string {

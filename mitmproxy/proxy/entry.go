@@ -144,9 +144,10 @@ func (c *wrapServerConn) Close() error {
 		addon.ServerDisconnected(c.connCtx)
 	}
 
-	if !c.connCtx.ClientConn.Tls {
-		c.connCtx.ClientConn.Conn.(*wrapClientConn).Conn.(*net.TCPConn).CloseRead()
-	} else {
+	// HTTP upstream connections may end independently of downstream
+	// keep-alive requests. Closing the client's read side here races the next
+	// request when a streamed response has already flushed its last bytes.
+	if c.connCtx.ClientConn.Tls {
 		// if keep-alive connection close
 		if !c.connCtx.closeAfterResponse {
 			c.connCtx.ClientConn.Conn.Close()
@@ -213,22 +214,18 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		b, err := e.proxy.authProxy(res, req)
 		if !b {
 			log.Errorf("Proxy authentication failed: %v", err)
-			// Clients such as curl may accept an HTTP error response without
-			// failing the process. Always return an explicit denial body. Auth
-			// callback errors can contain secrets and stay in server diagnostics.
+			// Callback errors may contain credentials; keep them in diagnostics.
 			httpError(res, "Proxy authentication required; request was not forwarded. Use the configured proxy credentials or inherit the execution environment's proxy settings.", http.StatusProxyAuthRequired)
 			return
 		}
 	}
-	// Capture the proxy-auth username as a per-connection tag so addons can
-	// attribute every flow on this connection to the client that opened it
+	// Capture the proxy-auth username for this request so addons can
+	// attribute its flow to the client that opened it
 	// (e.g. an injected tool-call id). This is observational only — it never
 	// rejects — and the credential is stripped before the request is forwarded
 	// so it does not leak upstream.
-	if connCtx, ok := req.Context().Value(connContextKey).(*ConnContext); ok && connCtx.ProxyAuthUser == "" {
-		if user := parseProxyAuthUser(req.Header.Get("Proxy-Authorization")); user != "" {
-			connCtx.ProxyAuthUser = user
-		}
+	if connCtx, ok := req.Context().Value(connContextKey).(*ConnContext); ok {
+		connCtx.ProxyAuthUser = parseProxyAuthUser(req.Header.Get("Proxy-Authorization"))
 	}
 	req.Header.Del("Proxy-Authorization")
 
@@ -295,6 +292,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 func (e *entry) establishConnection(res http.ResponseWriter, f *Flow) (net.Conn, error) {
 	cconn, _, err := res.(http.Hijacker).Hijack()
 	if err != nil {
+		f.Error = err
 		for _, addon := range e.proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}
@@ -304,6 +302,7 @@ func (e *entry) establishConnection(res http.ResponseWriter, f *Flow) (net.Conn,
 	_, err = io.WriteString(cconn, "HTTP/1.1 200 Connection Established\r\n\r\n")
 	if err != nil {
 		cconn.Close()
+		f.Error = err
 		for _, addon := range e.proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}
@@ -332,6 +331,7 @@ func (e *entry) directTransfer(res http.ResponseWriter, req *http.Request, f *Fl
 
 	conn, err := proxy.getUpstreamConn(req.Context(), req)
 	if err != nil {
+		f.Error = err
 		for _, addon := range proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}
@@ -449,6 +449,7 @@ func (e *entry) httpsDialFirstAttack(res http.ResponseWriter, req *http.Request,
 
 	conn, err := proxy.interceptor.httpsDial(req.Context(), req)
 	if err != nil {
+		f.Error = err
 		for _, addon := range proxy.Addons {
 			addon.HTTPConnectError(f, err)
 		}

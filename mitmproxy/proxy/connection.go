@@ -74,6 +74,14 @@ func (c *ServerConn) TlsState() *tls.ConnectionState {
 // connection context ctx key
 var connContextKey = new(struct{})
 
+// ProxyAuthUser returns the local proxy credential associated with a dial.
+func ProxyAuthUser(ctx context.Context) string {
+	if conn, ok := ctx.Value(connContextKey).(*ConnContext); ok {
+		return conn.ProxyAuthUser
+	}
+	return ""
+}
+
 // connection context
 type ConnContext struct {
 	ClientConn *ClientConn   `json:"clientConn"`
@@ -81,7 +89,7 @@ type ConnContext struct {
 	Intercept  bool          `json:"intercept"` // Indicates whether to parse HTTPS
 	FlowCount  atomic.Uint32 `json:"-"`         // Number of HTTP requests made on the same connection
 	// ProxyAuthUser is the username from this connection's Proxy-Authorization
-	// (Basic) credential, captured once when the connection is opened. It lets
+	// (Basic) credential for the current request. It lets
 	// addons attribute every flow on the connection to the client that opened
 	// it — callers can inject an identifier as the proxy username. Empty when no
 	// credential was presented. Never used for authorization here.

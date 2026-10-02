@@ -66,12 +66,17 @@ type Info struct {
 
 	// Proc is non-nil if and only if an OS process backs this unit.
 	Proc *Proc `json:"proc,omitempty"`
+	// Status is a shell status produced by an in-process interpreter.
+	Status *int `json:"status,omitempty"`
 }
 
-// ExitStatus is the unit's OS exit code, or zero when it has no process. Use
-// Proc != nil to tell "exited zero" from "never had an exit code".
+// ExitStatus is the OS exit code or an in-process shell status when present.
+// A nil Proc and nil Status mean the unit has no exit code.
 func (i Info) ExitStatus() int {
 	if i.Proc == nil {
+		if i.Status != nil {
+			return *i.Status
+		}
 		return 0
 	}
 	return i.Proc.ExitCode
@@ -92,14 +97,14 @@ type Proc struct {
 	Signal   string `json:"signal,omitempty"`
 }
 
-// Result is a unit's terminal fact, in whichever currency its shape speaks: an
-// OS exit status, a Go error, or nothing at all. Exited is what keeps the
-// registry from inventing an exit code for a shape that has none.
+// Result is a unit's terminal fact: an OS exit status, interpreter status,
+// Go error, or nothing at all.
 type Result struct {
 	Err      error
 	Exited   bool
 	ExitCode int
 	Signal   string
+	Status   *int
 }
 
 // Signal is one rung of the stop ladder.
