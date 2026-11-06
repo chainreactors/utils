@@ -224,9 +224,11 @@ func (e *entry) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	// (e.g. an injected tool-call id). This is observational only — it never
 	// rejects — and the credential is stripped before the request is forwarded
 	// so it does not leak upstream.
-	if connCtx, ok := req.Context().Value(connContextKey).(*ConnContext); ok {
-		connCtx.ProxyAuthUser = parseProxyAuthUser(req.Header.Get("Proxy-Authorization"))
+	user := parseProxyAuthUser(req.Header.Get("Proxy-Authorization"))
+	if connCtx, ok := req.Context().Value(connContextKey).(*ConnContext); ok && connCtx != nil {
+		connCtx.authOnce.Do(func() { connCtx.ProxyAuthUser = user })
 	}
+	req = req.WithContext(context.WithValue(req.Context(), proxyAuthUserContextKey{}, user))
 	req.Header.Del("Proxy-Authorization")
 
 	// proxy via connect tunnel
@@ -263,9 +265,7 @@ func (e *entry) handleConnect(res http.ResponseWriter, req *http.Request) {
 	})
 
 	shouldIntercept := proxy.shouldIntercept == nil || proxy.shouldIntercept(req)
-	f := newFlow()
-	f.Request = newRequest(req)
-	f.ConnContext = req.Context().Value(connContextKey).(*ConnContext)
+	f := newFlow(req)
 	f.ConnContext.Intercept = shouldIntercept
 	defer f.finish()
 
@@ -370,6 +370,7 @@ func (e *entry) dispatchTunnel(req *http.Request, f *Flow, cconn net.Conn, conn 
 		var err error
 		conn, err = dialFn()
 		if err != nil {
+			f.Error = err
 			cconn.Close()
 			log.Error(err)
 			return false
@@ -426,6 +427,7 @@ func (e *entry) dispatchTunnel(req *http.Request, f *Flow, cconn net.Conn, conn 
 			return
 		}
 		if err := proxy.webSocketHandler.handle(conn, cconn, f); err != nil {
+			f.Error = err
 			log.Errorf("WebSocket handle error: %v", err)
 			closeBoth()
 		}

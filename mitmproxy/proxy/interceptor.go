@@ -158,9 +158,8 @@ func (a *interceptor) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if strings.EqualFold(req.Header.Get("Connection"), "Upgrade") && strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
-		f := newFlow()
-		f.Request = newRequest(req)
-		f.ConnContext = req.Context().Value(connContextKey).(*ConnContext)
+		f := newFlow(req)
+		defer f.finish()
 		f.ConnContext.FlowCount.Add(1)
 
 		for _, addon := range a.proxy.Addons {
@@ -175,15 +174,13 @@ func (a *interceptor) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 				}
 				res.WriteHeader(f.Response.StatusCode)
 				if len(f.Response.Body) > 0 {
-					_, _ = res.Write(f.Response.Body)
+					_, f.Error = res.Write(f.Response.Body)
 				}
-				f.finish()
 				return
 			}
 		}
-		f.finish()
-
-		if err := a.proxy.webSocketHandler.handleWSS(res, req); err != nil {
+		if err := a.proxy.webSocketHandler.handleWSS(res, req, f); err != nil {
+			f.Error = err
 			log.Errorf("handleWSS error: %v", err)
 		}
 		return
@@ -508,9 +505,7 @@ func (a *interceptor) attack(res http.ResponseWriter, req *http.Request) {
 		"method": req.Method,
 	})
 
-	f := newFlow()
-	f.Request = newRequest(req)
-	f.ConnContext = req.Context().Value(connContextKey).(*ConnContext)
+	f := newFlow(req)
 
 	reply := func(response *Response, body io.Reader) {
 		if response.Header != nil {

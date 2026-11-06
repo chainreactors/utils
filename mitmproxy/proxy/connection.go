@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"sync"
 
 	uuid "github.com/satori/go.uuid"
 	"go.uber.org/atomic"
@@ -74,9 +75,15 @@ func (c *ServerConn) TlsState() *tls.ConnectionState {
 // connection context ctx key
 var connContextKey = new(struct{})
 
-// ProxyAuthUser returns the local proxy credential associated with a dial.
+type proxyAuthUserContextKey struct{}
+
+// ProxyAuthUser returns the request's local proxy username. Requests inside a
+// CONNECT tunnel inherit the username captured when the tunnel was opened.
 func ProxyAuthUser(ctx context.Context) string {
-	if conn, ok := ctx.Value(connContextKey).(*ConnContext); ok {
+	if user, ok := ctx.Value(proxyAuthUserContextKey{}).(string); ok {
+		return user
+	}
+	if conn, ok := ctx.Value(connContextKey).(*ConnContext); ok && conn != nil {
 		return conn.ProxyAuthUser
 	}
 	return ""
@@ -88,13 +95,13 @@ type ConnContext struct {
 	ServerConn *ServerConn   `json:"serverConn"`
 	Intercept  bool          `json:"intercept"` // Indicates whether to parse HTTPS
 	FlowCount  atomic.Uint32 `json:"-"`         // Number of HTTP requests made on the same connection
-	// ProxyAuthUser is the username from this connection's Proxy-Authorization
-	// (Basic) credential for the current request. It lets
-	// addons attribute every flow on the connection to the client that opened
-	// it — callers can inject an identifier as the proxy username. Empty when no
-	// credential was presented. Never used for authorization here.
+	// ProxyAuthUser is the proxy username from the first request on this
+	// connection. Use Flow.ProxyAuthUser for an individual request, since HTTP
+	// keep-alive requests may carry different credentials. Never used for
+	// authorization here.
 	ProxyAuthUser string `json:"-"`
 
+	authOnce           sync.Once
 	proxy              *Proxy
 	closeAfterResponse bool                        // after http response, http server will close the connection
 	dialFn             func(context.Context) error // when begin request, if there no ServerConn, use this func to dial

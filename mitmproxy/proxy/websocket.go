@@ -210,10 +210,14 @@ func (h *webSocketHandler) forwardMessages(clientWS, serverWS *websocket.Conn, f
 	}()
 
 	err := <-errChan
+	// Stop both readers before terminal observers inspect the flow.
+	clientWS.Close()
+	serverWS.Close()
+	<-errChan
 	return err
 }
 
-func (h *webSocketHandler) handleWSS(res http.ResponseWriter, req *http.Request) error {
+func (h *webSocketHandler) handleWSS(res http.ResponseWriter, req *http.Request, f *Flow) error {
 	serverURL := "wss://" + req.Host + req.URL.RequestURI()
 	log.Debugf("Connecting to WSS server: %s", serverURL)
 	if parsedURL, err := url.Parse(serverURL); err == nil {
@@ -227,6 +231,7 @@ func (h *webSocketHandler) handleWSS(res http.ResponseWriter, req *http.Request)
 		log.Errorf("Failed to get upstream connection: %v", err)
 		return err
 	}
+	defer plainConn.Close()
 
 	serverConn := newServerConn()
 	serverConn.Address = req.Host
@@ -276,11 +281,8 @@ func (h *webSocketHandler) handleWSS(res http.ResponseWriter, req *http.Request)
 	log.Debugf("Client WSS upgraded successfully")
 
 	wsData := newWebSocketData()
-	f := newFlow()
-	f.Request = newRequest(req)
-	f.ConnContext = connCtx
 	f.WebScoket = wsData
-	defer f.finish()
+	f.Response = &Response{StatusCode: http.StatusSwitchingProtocols, Header: res.Header().Clone()}
 
 	for _, addon := range h.proxy.Addons {
 		addon.WebSocketStart(f)

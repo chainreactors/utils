@@ -22,7 +22,8 @@ func mustParseURL(raw string) *url.URL {
 }
 
 func TestNewFlowRecord(t *testing.T) {
-	f := newFlow()
+	f := newFlow(nil)
+	f.EndTime = f.StartTime.Add(250 * time.Millisecond)
 	f.Request = &Request{
 		Method: "POST",
 		URL:    mustParseURL("https://example.com/api"),
@@ -42,6 +43,9 @@ func TestNewFlowRecord(t *testing.T) {
 
 	if r.Method != "POST" {
 		t.Fatalf("method: expected POST, got %s", r.Method)
+	}
+	if r.Duration != 250*time.Millisecond {
+		t.Fatalf("duration: expected 250ms, got %v", r.Duration)
 	}
 	if r.Host != "example.com" {
 		t.Fatalf("host: expected example.com, got %s", r.Host)
@@ -70,14 +74,11 @@ func TestSnipBytes(t *testing.T) {
 }
 
 func TestNewFlowRecord_Integration(t *testing.T) {
-	var mu sync.Mutex
-	var captured []*FlowRecord
+	captured := make(chan *FlowRecord, 1)
 
 	addon := &captureAddon{
 		onRecord: func(r *FlowRecord) {
-			mu.Lock()
-			captured = append(captured, r)
-			mu.Unlock()
+			captured <- r
 		},
 	}
 
@@ -114,15 +115,14 @@ func TestNewFlowRecord_Integration(t *testing.T) {
 	io.ReadAll(resp.Body)
 	resp.Body.Close()
 
-	time.Sleep(100 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(captured) != 1 {
-		t.Fatalf("expected 1, got %d", len(captured))
+	var r *FlowRecord
+	select {
+	case r = <-captured:
+	case <-time.After(5 * time.Second):
+		t.Fatal("missing flow record")
 	}
-	r := captured[0]
-	if r.Method != "GET" || r.StatusCode != 200 || r.Duration <= 0 {
+	// A fast localhost exchange can have zero duration on coarse clocks.
+	if r.Method != "GET" || r.StatusCode != 200 || r.Duration < 0 {
 		t.Fatalf("unexpected record: method=%s status=%d dur=%v", r.Method, r.StatusCode, r.Duration)
 	}
 	if string(r.ResponseBody) != "hello" {

@@ -112,6 +112,9 @@ type Flow struct {
 	Response    *Response
 	WebScoket   *WebSocketData
 	SSE         *SSEData // Server-Sent Events data
+	// ProxyAuthUser snapshots this request's local proxy username. It stays
+	// unchanged when the underlying connection serves another request.
+	ProxyAuthUser string `json:"-"`
 
 	// https://docs.mitmproxy.org/stable/overview-features/#streaming
 	Stream            bool
@@ -123,12 +126,18 @@ type Flow struct {
 	finishOnce        sync.Once
 }
 
-func newFlow() *Flow {
-	return &Flow{
+func newFlow(req *http.Request) *Flow {
+	f := &Flow{
 		Id:        uuid.NewV4(),
 		StartTime: time.Now(),
 		done:      make(chan struct{}),
 	}
+	if req != nil {
+		f.Request = newRequest(req)
+		f.ConnContext, _ = req.Context().Value(connContextKey).(*ConnContext)
+		f.ProxyAuthUser = ProxyAuthUser(req.Context())
+	}
+	return f
 }
 
 func (f *Flow) Done() <-chan struct{} {
