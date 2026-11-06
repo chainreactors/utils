@@ -323,8 +323,6 @@ func (m *Manager) classify(s *session, result Result) (State, string) {
 		return terminal, reason
 	}
 	switch {
-	case result.Err == nil && (result.Status == nil || *result.Status == 0):
-		return StateCompleted, ""
 	case errors.Is(result.Err, context.DeadlineExceeded):
 		return StateKilled, "timeout"
 	case errors.Is(result.Err, context.Canceled):
@@ -332,10 +330,15 @@ func (m *Manager) classify(s *session, result Result) (State, string) {
 	case errors.Is(result.Err, errAbandoned):
 		return StateKilled, "abandoned"
 	case result.Status != nil:
+		if result.Err != nil {
+			return StateFailed, result.Err.Error()
+		}
 		if *result.Status == 0 {
 			return StateCompleted, ""
 		}
 		return StateFailed, ""
+	case result.Err == nil:
+		return StateCompleted, ""
 	case result.Exited:
 		return StateFailed, ""
 	default:
