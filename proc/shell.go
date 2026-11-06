@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"context"
 	"os/exec"
 	"runtime"
 	"sync"
@@ -37,6 +38,14 @@ func ShellCommand(cmdLine string) *exec.Cmd {
 		return exec.Command("cmd", "/c", cmdLine)
 	}
 	return exec.Command(shell(), "-c", cmdLine)
+}
+
+// ShellCommandContext is ShellCommand with cancellation controlled by ctx.
+func ShellCommandContext(ctx context.Context, cmdLine string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.CommandContext(ctx, "cmd", "/c", cmdLine)
+	}
+	return exec.CommandContext(ctx, shell(), "-c", cmdLine)
 }
 
 // DefaultShellCommand returns the binary and args for an interactive shell.
