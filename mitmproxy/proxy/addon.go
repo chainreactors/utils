@@ -36,6 +36,10 @@ type Addon interface {
 	// The full HTTP response has been read.
 	Response(*Flow)
 
+	// Terminal notification after forwarding, including streamed responses.
+	// Error/EndTime are final; Done closes after this hook returns.
+	FlowFinished(*Flow)
+
 	// Stream request body modifier
 	StreamRequestModifier(*Flow, io.Reader) io.Reader
 
@@ -67,6 +71,8 @@ type Addon interface {
 // BaseAddon do nothing
 type BaseAddon struct{}
 
+func (addon *BaseAddon) FlowFinished(*Flow) {}
+
 func (addon *BaseAddon) ClientConnected(*ClientConn)                                  {}
 func (addon *BaseAddon) ClientDisconnected(*ClientConn)                               {}
 func (addon *BaseAddon) ServerConnected(*ConnContext)                                 {}
@@ -82,9 +88,9 @@ func (addon *BaseAddon) AccessProxyServer(req *http.Request, res http.ResponseWr
 func (addon *BaseAddon) WebSocketStart(*Flow)                                         {}
 func (addon *BaseAddon) WebSocketMessage(*Flow)                                       {}
 func (addon *BaseAddon) WebSocketEnd(*Flow)                                           {}
-func (addon *BaseAddon) SSEStart(*Flow)    {}
-func (addon *BaseAddon) SSEMessage(*Flow)  {}
-func (addon *BaseAddon) SSEEnd(*Flow)      {}
+func (addon *BaseAddon) SSEStart(*Flow)                                               {}
+func (addon *BaseAddon) SSEMessage(*Flow)                                             {}
+func (addon *BaseAddon) SSEEnd(*Flow)                                                 {}
 func (addon *BaseAddon) RequestError(*Flow, error)                                    {}
 func (addon *BaseAddon) HTTPConnectError(*Flow, error)                                {}
 
@@ -220,7 +226,6 @@ func (addon *LogAddon) SSEEnd(f *Flow) {
 		eventCount,
 		time.Since(f.StartTime).Milliseconds())
 }
-
 
 type UpstreamCertAddon struct {
 	BaseAddon

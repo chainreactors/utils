@@ -293,6 +293,7 @@ func (m *Manager) finish(s *session, result Result, pumps []<-chan struct{}) {
 	s.ActivitySeq++
 	s.State = state
 	s.Reason = reason
+	s.Status = result.Status
 	if s.Proc != nil && result.Exited {
 		s.Proc.ExitCode = result.ExitCode
 		s.Proc.Signal = result.Signal
@@ -313,8 +314,7 @@ func (m *Manager) finish(s *session, result Result, pumps []<-chan struct{}) {
 	}
 }
 
-// classify turns a terminal Result into a state. It never invents an exit code:
-// a shape that has no OS status reports none, and Info.Proc stays nil.
+// classify turns a terminal Result into a state without inventing an exit code.
 func (m *Manager) classify(s *session, result Result) (State, string) {
 	m.mu.Lock()
 	terminal, reason := s.terminal, s.Reason
@@ -323,7 +323,7 @@ func (m *Manager) classify(s *session, result Result) (State, string) {
 		return terminal, reason
 	}
 	switch {
-	case result.Err == nil:
+	case result.Err == nil && (result.Status == nil || *result.Status == 0):
 		return StateCompleted, ""
 	case errors.Is(result.Err, context.DeadlineExceeded):
 		return StateKilled, "timeout"
@@ -331,6 +331,11 @@ func (m *Manager) classify(s *session, result Result) (State, string) {
 		return StateKilled, "canceled"
 	case errors.Is(result.Err, errAbandoned):
 		return StateKilled, "abandoned"
+	case result.Status != nil:
+		if *result.Status == 0 {
+			return StateCompleted, ""
+		}
+		return StateFailed, ""
 	case result.Exited:
 		return StateFailed, ""
 	default:
@@ -656,6 +661,14 @@ func (m *Manager) SnapshotBytes(id string, n int) ([]byte, int64, error) {
 	return data, offset, nil
 }
 
+func (m *Manager) OutputFile(id string) (string, error) {
+	session, err := m.lookup(id)
+	if err != nil {
+		return "", err
+	}
+	return session.output.OutputFile()
+}
+
 func (m *Manager) OutputLen(id string) (int64, error) {
 	s, err := m.lookup(id)
 	if err != nil {
@@ -838,12 +851,14 @@ func (m *Manager) newBuffer(spec Spec) (*OutputBuffer, error) {
 		cap:       size,
 		stripANSI: spec.StripANSI,
 	}
-	if spec.OutputFile != "" {
+	buffer.filePath = spec.OutputFile
+	buffer.fileAfterBytes, buffer.fileAfterLines = spec.OutputFileAfterBytes, spec.OutputFileAfterLines
+	if spec.OutputFile != "" && spec.OutputFileAfterBytes == 0 && spec.OutputFileAfterLines == 0 {
 		file, err := os.OpenFile(spec.OutputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			return nil, fmt.Errorf("open output file: %w", err)
 		}
-		buffer.file = file
+		buffer.file, buffer.fileOpened = file, true
 	}
 	return buffer, nil
 }

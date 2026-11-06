@@ -117,8 +117,10 @@ type Flow struct {
 	Stream            bool
 	UseSeparateClient bool // use separate http client to send http request
 	StartTime         time.Time
-	EndTime           time.Time // set by proxy engine before Response/RequestError hooks
+	EndTime           time.Time // finalized before FlowFinished; Response may see body-read time
 	done              chan struct{}
+	Error             error `json:"-"` // terminal forwarding error; read after Done or in FlowFinished
+	finishOnce        sync.Once
 }
 
 func newFlow() *Flow {
@@ -134,7 +136,15 @@ func (f *Flow) Done() <-chan struct{} {
 }
 
 func (f *Flow) finish() {
-	close(f.done)
+	f.finishOnce.Do(func() {
+		f.EndTime = time.Now()
+		defer close(f.done)
+		if f.ConnContext != nil && f.ConnContext.proxy != nil {
+			for _, addon := range f.ConnContext.proxy.Addons {
+				addon.FlowFinished(f)
+			}
+		}
+	})
 }
 
 func (f *Flow) MarshalJSON() ([]byte, error) {
@@ -199,10 +209,10 @@ func (wsData *WebSocketData) addMessage(msgType int, content []byte, fromClient 
 type SSEEvent struct {
 	ID    string    `json:"id,omitempty"`    // event id
 	Event string    `json:"event,omitempty"` // event type (default: "message")
-	Data  string    `json:"data"`           // event data
+	Data  string    `json:"data"`            // event data
 	Retry int       `json:"retry,omitempty"` // retry interval in milliseconds
-	Raw   string    `json:"raw"`            // raw event text
-	Time  time.Time `json:"timestamp"`      // when this event was received
+	Raw   string    `json:"raw"`             // raw event text
+	Time  time.Time `json:"timestamp"`       // when this event was received
 }
 
 // SSEData holds all SSE events for a flow

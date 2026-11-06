@@ -1,10 +1,80 @@
 package proc
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 )
+
+func TestOutputFileStartsBeforeRingEviction(t *testing.T) {
+	buffer := NewOutputBuffer(8)
+	buffer.filePath = filepath.Join(t.TempDir(), "output", "command.log")
+	buffer.fileAfterBytes = 5
+	_, _ = buffer.Write([]byte("first"))
+	if path, err := buffer.OutputFile(); path != "" || err != nil {
+		t.Fatalf("small output created a file: %q, %v", path, err)
+	}
+	_, _ = buffer.Write([]byte("-第二段-last"))
+	buffer.Close()
+	path, err := buffer.OutputFile()
+	if err != nil || path == "" {
+		t.Fatalf("missing output file: %q, %v", path, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "first-第二段-last" {
+		t.Fatalf("full output lost before eviction: %q, %v", data, err)
+	}
+}
+
+func TestOutputFileFailureNeverClaimsRecovery(t *testing.T) {
+	buffer := NewOutputBuffer(8)
+	buffer.filePath = t.TempDir()
+	buffer.fileAfterBytes = 2
+	_, _ = buffer.Write([]byte("large output"))
+	if path, err := buffer.OutputFile(); path != "" || err == nil {
+		t.Fatalf("failed output file claimed recovery: %q, %v", path, err)
+	}
+	if buffer.Len() != int64(len("large output")) {
+		t.Fatal("write failure stopped console capture")
+	}
+}
+
+func TestOutputFileWriteFailureNeverClaimsRecovery(t *testing.T) {
+	buffer := NewOutputBuffer(8)
+	buffer.filePath = filepath.Join(t.TempDir(), "command.log")
+	buffer.fileAfterBytes = 2
+	_, _ = buffer.Write([]byte("first"))
+	if err := buffer.file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = buffer.Write([]byte("-last"))
+	if path, err := buffer.OutputFile(); path != "" || err == nil {
+		t.Fatalf("partial file claimed recovery: %q, %v", path, err)
+	}
+	if buffer.Len() != 10 {
+		t.Fatal("file failure stopped console capture")
+	}
+	buffer.Close()
+}
+
+func TestLineThresholdAlsoPreservesOutputBeforeEviction(t *testing.T) {
+	buffer := NewOutputBuffer(8)
+	buffer.filePath = filepath.Join(t.TempDir(), "command.log")
+	buffer.fileAfterLines = 2
+	_, _ = buffer.Write([]byte("one enormous line"))
+	_, _ = buffer.Write([]byte("\ntwo\nthree"))
+	buffer.Close()
+	path, err := buffer.OutputFile()
+	if err != nil || path == "" {
+		t.Fatalf("missing output: %q, %v", path, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "one enormous line\ntwo\nthree" {
+		t.Fatalf("lost prefix: %q, %v", data, err)
+	}
+}
 
 func TestOutputBufferWrite(t *testing.T) {
 	buf := NewOutputBuffer(1024)
